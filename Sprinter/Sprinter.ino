@@ -78,10 +78,10 @@
    The beginning of the line is still interpreted.
    
  - Same fix for SD Card, testet and work
-
- Version 1.3.09T
- - Move SLOWDOWN Function up
   
+Version 1.3.09T  
+- Move SLOWDOWN Funktion up
+- I2C Display test
 
 */
 
@@ -94,6 +94,11 @@
 #include "Sprinter.h"
 #include "speed_lookuptable.h"
 #include "heater.h"
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "i2c_lcd_display.h"
+
 
 #ifdef USE_ARC_FUNCTION
   #include "arc_func.h"
@@ -181,7 +186,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.09T / 04.03.2012"
+#define _VERSION_TEXT "1.3.08T / 24.02.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -261,7 +266,7 @@ float offset[3] = {0.0, 0.0, 0.0};
 // comm variables and Commandbuffer
 // BUFSIZE is reduced from 8 to 6 to free more RAM for the PLANNER
 #define MAX_CMD_SIZE 96
-#define BUFSIZE 6 //8
+#define BUFSIZE 8//8
 char cmdbuffer[BUFSIZE][MAX_CMD_SIZE];
 bool fromsd[BUFSIZE];
 
@@ -756,6 +761,8 @@ void setup()
   Serial.print((int)sizeof(block_t)*BLOCK_BUFFER_SIZE);
   showString(PSTR(" / "));
   Serial.println(BLOCK_BUFFER_SIZE);
+  
+  init_I2C_LCD();
 }
 
 
@@ -804,6 +811,7 @@ void loop()
   //check heater every n milliseconds
   manage_heater();
   manage_inactivity(1);
+  manage_display();
 }
 
 //------------------------------------------------
@@ -823,7 +831,7 @@ void check_buffer_while_arc()
 //------------------------------------------------
 void get_command() 
 { 
-  while( Serial.available() > 0  && buflen < BUFSIZE)
+  while( Serial.available() > 0 && buflen < BUFSIZE)
   {
     serial_char = Serial.read();
     if(serial_char == '\n' || serial_char == '\r' || serial_char == ':' || serial_count >= (MAX_CMD_SIZE - 1) ) 
@@ -2482,6 +2490,12 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
     getHighESpeed();
   #endif
   st_wake_up();
+}
+
+int calc_plannerpuffer_fill(void)
+{
+  int moves_queued=(block_buffer_head-block_buffer_tail + BLOCK_BUFFER_SIZE) & (BLOCK_BUFFER_SIZE - 1);
+  return(moves_queued);
 }
 
 void plan_set_position(float x, float y, float z, float e)

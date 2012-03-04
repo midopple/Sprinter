@@ -247,6 +247,8 @@ int read_max6675()
   if((millis() - previous_millis_monitor) > 250 )
   {
     previous_millis_monitor = millis();
+
+
     if(manage_monitor <= 1)
     {
       showString(PSTR("MTEMP:"));

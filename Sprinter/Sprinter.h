@@ -2,12 +2,15 @@
 // Licence: GPL
 
 //Check Version of Arduino and then include the right libraries
+/*
 #if defined(ARDUINO) && ARDUINO >= 100
   #include "Arduino.h"
 #else
   #include <WProgram.h>  
 #endif
+*/
 
+#include <WProgram.h>  
 #include "fastio.h"
 
 extern "C" void __cxa_pure_virtual();
