@@ -80,8 +80,21 @@
  - Same fix for SD Card, testet and work
   
 Version 1.3.09T  
-- Move SLOWDOWN Funktion up
-- I2C Display test
+- Move SLOWDOWN Function up
+ 
+ Version 1.3.10T
+- Add info to GEN7 Pins
+- Update pins.h for gen7, working setup for 20MHz
+- calculate feedrate without extrude before planner block is set
+- New Board --> GEN7 @ 20 Mhz …
+- ENDSTOPS_ONLY_FOR_HOMING Option ignore Endstop always --> fault is cleared
+
+ Version 1.3.11T
+- fix for broken include in store_eeprom.cpp  --> Thanks to kmeehl (issue #145)
+- Make fastio & Arduino pin numbering consistent for AT90USB128x. --> Thanks to lincomatic
+- Select Speedtable with F_CPU
+- Use same Values for Speedtables as Marlin 
+- Extrudmultiply
 
 */
 
@@ -186,7 +199,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.08T / 24.02.2012"
+#define _VERSION_TEXT "1.3.11T / 19.03.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -222,12 +235,12 @@ unsigned long plateau_steps;
 volatile int feedmultiply=100; //100->original / 200-> Faktor 2 / 50 -> Faktor 0.5
 int saved_feedmultiply;
 volatile bool feedmultiplychanged=false;
+volatile int extrudemultiply=100; //100->1 200->2
 
 //boolean acceleration_enabled = false, accelerating = false;
 //unsigned long interval;
 float destination[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
 float current_position[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
-
 
 bool home_all_axis = true;
 //unsigned ?? ToDo: Check
@@ -266,7 +279,7 @@ float offset[3] = {0.0, 0.0, 0.0};
 // comm variables and Commandbuffer
 // BUFSIZE is reduced from 8 to 6 to free more RAM for the PLANNER
 #define MAX_CMD_SIZE 96
-#define BUFSIZE 8//8
+#define BUFSIZE 12//8
 char cmdbuffer[BUFSIZE][MAX_CMD_SIZE];
 bool fromsd[BUFSIZE];
 
@@ -772,7 +785,7 @@ void setup()
 //------------------------------------------------
 void loop()
 {
-  if(buflen < (BUFSIZE-1))
+  if(buflen < (BUFSIZE-4))
     get_command();
   
   if(buflen)
@@ -820,7 +833,7 @@ void loop()
 
 void check_buffer_while_arc()
 {
-  if(buflen < (BUFSIZE-1))
+  if(buflen < (BUFSIZE-4))
   {
     get_command();
   }
@@ -940,7 +953,7 @@ void get_command()
   {
     return;
   }
-  while( filesize > sdpos  && buflen < BUFSIZE)
+  while( filesize > sdpos && buflen < BUFSIZE)
   {
     serial_char = file.read();
     read_char_int = (int)serial_char;
@@ -1036,12 +1049,17 @@ FORCE_INLINE void process_commands()
         codenum += millis();  // keep track of when we started waiting
         while(millis()  < codenum ){
           manage_heater();
+          manage_display();
         }
         break;
       case 28: //G28 Home all Axis one at a time
         saved_feedrate = feedrate;
         saved_feedmultiply = feedmultiply;
-        feedmultiply = 100;      
+        previous_millis_cmd = millis();
+        
+        feedmultiply = 100;    
+      
+        enable_endstops(true);
       
         for(int i=0; i < NUM_AXIS; i++) 
         {
@@ -1147,7 +1165,11 @@ FORCE_INLINE void process_commands()
           }
         }    
    
-        //showString(PSTR("HOME Z AXIS\r\n"));   
+        //showString(PSTR("HOME Z AXIS\r\n"));  
+        
+        #ifdef ENDSTOPS_ONLY_FOR_HOMING
+            enable_endstops(false);
+      	#endif
       
         feedrate = saved_feedrate;
         feedmultiply = saved_feedmultiply;
@@ -1438,6 +1460,7 @@ FORCE_INLINE void process_commands()
             codenum = millis();
           }
           manage_heater();
+          manage_display();
           #ifdef TEMP_RESIDENCY_TIME
             /* start/restart the TEMP_RESIDENCY_TIME timer whenever we reach target temp for the first time
                or when current temp falls outside the hysteresis after target temp was reached */
@@ -1466,6 +1489,7 @@ FORCE_INLINE void process_commands()
             codenum = millis(); 
           }
           manage_heater();
+          manage_display();
         }
       #endif
       break;
@@ -1625,12 +1649,21 @@ FORCE_INLINE void process_commands()
         if(code_seen('S')) 
         {
           feedmultiply = code_value() ;
-          if(feedmultiply < 20) feedmultiply = 20;
-          if(feedmultiply > 200) feedmultiply = 200;
+          constrain(feedmultiply, 20, 200);
           feedmultiplychanged=true;
         }
       }
       break;
+      case 221: // M221 S<factor in percent>- set extrude factor override percentage
+      {
+        if(code_seen('S')) 
+        {
+          extrudemultiply = code_value() ;
+          constrain(extrudemultiply, 40, 200);
+        }
+      }
+      break;
+
 #ifdef USE_EEPROM_SETTINGS
       case 500: // Store settings in EEPROM
       {
@@ -1763,7 +1796,15 @@ void prepare_move()
     if (destination[Z_AXIS] > Z_MAX_LENGTH) destination[Z_AXIS] = Z_MAX_LENGTH;
   }
 
-  help_feedrate = ((long)feedrate*(long)feedmultiply);
+  if(destination[E_AXIS] > current_position[E_AXIS])
+  {
+    help_feedrate = ((long)feedrate*(long)feedmultiply);
+  }
+  else
+  {
+    help_feedrate = ((long)feedrate*(long)100);
+  }
+  
   plan_buffer_line(destination[X_AXIS], destination[Y_AXIS], destination[Z_AXIS], destination[E_AXIS], help_feedrate/6000.0);
   
   for(int i=0; i < NUM_AXIS; i++)
@@ -1780,8 +1821,15 @@ void prepare_arc_move(char isclockwise)
   float r = hypot(offset[X_AXIS], offset[Y_AXIS]); // Compute arc radius for mc_arc
   long help_feedrate = 0;
 
-  
-  help_feedrate = ((long)feedrate*(long)feedmultiply);
+  if(destination[E_AXIS] > current_position[E_AXIS])
+  {
+    help_feedrate = ((long)feedrate*(long)feedmultiply);
+  }
+  else
+  {
+    help_feedrate = ((long)feedrate*(long)100);
+  }
+
   // Trace the arc
   mc_arc(current_position, destination, offset, X_AXIS, Y_AXIS, Z_AXIS, help_feedrate/6000.0, r, isclockwise);
   
@@ -2203,6 +2251,7 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   while(block_buffer_tail == next_buffer_head) { 
     manage_heater(); 
     manage_inactivity(1); 
+    manage_display();
   }
 
   // The target position of the tool in absolute steps
@@ -2225,6 +2274,8 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->steps_y = labs(target[Y_AXIS]-position[Y_AXIS]);
   block->steps_z = labs(target[Z_AXIS]-position[Z_AXIS]);
   block->steps_e = labs(target[E_AXIS]-position[E_AXIS]);
+  block->steps_e *= extrudemultiply;
+  block->steps_e /= 100;
   block->step_event_count = max(block->steps_x, max(block->steps_y, max(block->steps_z, block->steps_e)));
 
   // Bail if this is a zero-length block
@@ -2266,6 +2317,13 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   if(block->steps_z != 0) enable_z();
   if(block->steps_e != 0) enable_e();
  #endif 
+ 
+ if (block->steps_e == 0) {
+        if(feed_rate<mintravelfeedrate) feed_rate=mintravelfeedrate;
+  }
+  else {
+    	if(feed_rate<minimumfeedrate) feed_rate=minimumfeedrate;
+  } 
 
   // slow down when de buffer starts to empty, rather than wait at the corner for a buffer refill
   int moves_queued=(block_buffer_head-block_buffer_tail + BLOCK_BUFFER_SIZE) & (BLOCK_BUFFER_SIZE - 1);
@@ -2277,7 +2335,8 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   delta_mm[X_AXIS] = (target[X_AXIS]-position[X_AXIS])/axis_steps_per_unit[X_AXIS];
   delta_mm[Y_AXIS] = (target[Y_AXIS]-position[Y_AXIS])/axis_steps_per_unit[Y_AXIS];
   delta_mm[Z_AXIS] = (target[Z_AXIS]-position[Z_AXIS])/axis_steps_per_unit[Z_AXIS];
-  delta_mm[E_AXIS] = (target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS];
+  //delta_mm[E_AXIS] = (target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS];
+  delta_mm[E_AXIS] = ((target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS])*extrudemultiply/100.0;
   
   if ( block->steps_x == 0 && block->steps_y == 0 && block->steps_z == 0 ) {
     block->millimeters = fabs(delta_mm[E_AXIS]);
@@ -2293,15 +2352,6 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->nominal_speed = block->millimeters * inverse_second; // (mm/sec) Always > 0
   block->nominal_rate = ceil(block->step_event_count * inverse_second); // (step/sec) Always > 0
 
-  
- 
-
-  if (block->steps_e == 0) {
-        if(feed_rate<mintravelfeedrate) feed_rate=mintravelfeedrate;
-  }
-  else {
-    	if(feed_rate<minimumfeedrate) feed_rate=minimumfeedrate;
-  } 
 
 
 /*
@@ -2719,8 +2769,8 @@ FORCE_INLINE unsigned short calc_timer(unsigned short step_rate)
     step_loops = 1;
   } 
   
-  if(step_rate < 32) step_rate = 32;
-  step_rate -= 32; // Correct for minimal speed
+  if(step_rate < (F_CPU/500000)) step_rate = (F_CPU/500000);
+  step_rate -= (F_CPU/500000); // Correct for minimal speed
   
   if(step_rate >= (8*256)) // higher step rate 
   { // higher step rate 
@@ -3045,6 +3095,12 @@ void st_init()
   // output mode = 00 (disconnected)
   TCCR1A &= ~(3<<COM1A0); 
   TCCR1A &= ~(3<<COM1B0); 
+  
+  // Set the timer pre-scaler
+  // Generally we use a divider of 8, resulting in a 2MHz timer
+  // frequency on a 16MHz MCU. If you are going to change this, be
+  // sure to regenerate speed_lookuptable.h with
+  // create_speed_lookuptable.py
   TCCR1B = (TCCR1B & ~(0x07<<CS10)) | (2<<CS10); // 2MHz timer
 
   OCR1A = 0x4000;
@@ -3075,6 +3131,7 @@ void st_synchronize()
   while(blocks_queued()) {
     manage_heater();
     manage_inactivity(1);
+    manage_display();
   }   
 }
 

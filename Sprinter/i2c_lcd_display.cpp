@@ -38,6 +38,10 @@ extern float current_position[NUM_AXIS];
 extern uint32_t filesize;
 extern uint32_t sdpos;
 extern bool sdmode;
+extern volatile int feedmultiply;
+#ifdef PIDTEMP
+  extern volatile unsigned char g_heater_pwm_val;
+#endif
 
 
 LiquidCrystal_I2C lcd(0x20,20,4);  // set the LCD address to 0x20 for a 20 chars and 4 line display
@@ -125,16 +129,18 @@ void manage_display(void)
         {
           lcd.print("SD:");
           if(filesize > 0)
-            help_int_calc = (int)(sdpos*1000 / filesize);
+            help_float_calc = ((float)sdpos*100) / (float)filesize;
           else  
-            help_int_calc = 0;
+            help_float_calc = 0;
             
-          lcd.print((float)help_int_calc/10);
+          lcd.print(help_float_calc);
           lcd.print("%");  
         }
         else
         {
            start_millis_SD_card = millis();
+           lcd.print(" PWM:");
+           lcd.print((unsigned char)g_heater_pwm_val*1);
         }
 
       break;
@@ -169,6 +175,13 @@ void manage_display(void)
           lcd.print(help_time_calc%60);
           
           lcd.print(" / ");
+        }
+        else
+        {
+          
+          lcd.print("FM: ");
+          lcd.print(feedmultiply);
+          lcd.print("  PlanH: ");
         }
 
          

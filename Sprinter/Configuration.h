@@ -10,7 +10,9 @@
 // Sanguinololu up to 1.1 = 6
 // Sanguinololu 1.2 and above = 62
 // Gen 7 @ 16MHZ only= 7
+// Gen 7 @ 20MHZ only= 71
 // Teensylu (at90usb) = 8
+// Printrboard Rev. B (ATMEGA90USB1286) = 9
 // Gen 3 Plus = 21
 // gen 3  Monolithic Electronics = 22
 // Gen3 PLUS for TechZone Gen3 Remix Motherboard = 23
@@ -164,7 +166,9 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 //#define STEP_DELAY_RATIO 0.25
 
 ///Oscillation reduction.  Forces x,y,or z axis to be stationary for ## ms before allowing axis to switch direcitons.  Alternative method to prevent skipping steps.  Uncomment the line below to activate.
+// At this VErsion with Planner this Function ist not used
 //#define RAPID_OSCILLATION_REDUCTION
+
 #ifdef RAPID_OSCILLATION_REDUCTION
 long min_time_before_dir_change = 30; //milliseconds
 #endif
@@ -261,9 +265,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 //PID Controler Settings
 #define PID_INTEGRAL_DRIVE_MAX 80 // too big, and heater will lag after changing temperature, too small and it might not compensate enough for long-term errors
-#define PID_PGAIN 2560 //256 is 1.0  // value of X means that error of 1 degree is changing PWM duty by X, probably no need to go over 25
-#define PID_IGAIN 64 //256 is 1.0  // value of X (e.g 0.25) means that each degree error over 1 sec (2 measurements) changes duty cycle by 2X (=0.5) units (verify?)
-#define PID_DGAIN 4096 //256 is 1.0  // value of X means that around reached setpoint, each degree change over one measurement (half second) adjusts PWM by X units to compensate
+#define PID_PGAIN 2048 //256 is 1.0  // value of X means that error of 1 degree is changing PWM duty by X, probably no need to go over 25
+#define PID_IGAIN 32 // original = 64 - 256 is 1.0  // value of X (e.g 0.25) means that each degree error over 1 sec (2 measurements) changes duty cycle by 2X (=0.5) units (verify?)
+#define PID_DGAIN 2048 //256 is 1.0  // value of X means that around reached setpoint, each degree change over one measurement (half second) adjusts PWM by X units to compensate
 
 // magic formula 1, to get approximate "zero error" PWM duty. Take few measurements with low PWM duty and make linear fit to get the formula
 // for my makergear hot-end: linear fit {50,10},{60,20},{80,30},{105,50},{176,100},{128,64},{208,128}
