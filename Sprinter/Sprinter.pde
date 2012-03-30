@@ -94,10 +94,14 @@
 - Make fastio & Arduino pin numbering consistent for AT90USB128x. --> Thanks to lincomatic
 - Select Speedtable with F_CPU
 - Use same Values for Speedtables as Marlin 
--
 
  Version 1.3.12T
 - Fixed arc offset.
+
+ Version 1.3.13T
+- Extrudmultiply
+- use Feedratefaktor only when Extrude > 0
+
 
   
 
@@ -199,7 +203,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.12T / 27.03.2012"
+#define _VERSION_TEXT "1.3.13T / 30.03.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -235,6 +239,7 @@ unsigned long plateau_steps;
 volatile int feedmultiply=100; //100->original / 200-> Faktor 2 / 50 -> Faktor 0.5
 int saved_feedmultiply;
 volatile bool feedmultiplychanged=false;
+volatile int extrudemultiply=100; //100->1 200->2
 
 //boolean acceleration_enabled = false, accelerating = false;
 //unsigned long interval;
@@ -1653,12 +1658,21 @@ FORCE_INLINE void process_commands()
         if(code_seen('S')) 
         {
           feedmultiply = code_value() ;
-          if(feedmultiply < 20) feedmultiply = 20;
-          if(feedmultiply > 200) feedmultiply = 200;
+          feedmultiply = constrain(feedmultiply, 20, 200);
           feedmultiplychanged=true;
         }
       }
       break;
+      case 221: // M221 S<factor in percent>- set extrude factor override percentage
+      {
+        if(code_seen('S')) 
+        {
+          extrudemultiply = code_value() ;
+          extrudemultiply = constrain(extrudemultiply, 40, 200);
+        }
+      }
+      break;
+
 #ifdef USE_EEPROM_SETTINGS
       case 500: // Store settings in EEPROM
       {
@@ -1788,7 +1802,8 @@ void prepare_move()
 {
   long help_feedrate = 0;
 
-  if(!is_homing){
+  if(!is_homing)
+  {
     if (min_software_endstops) 
     {
       if (destination[X_AXIS] < 0) destination[X_AXIS] = 0.0;
@@ -1804,7 +1819,15 @@ void prepare_move()
     }
   }
   
-  help_feedrate = ((long)feedrate*(long)feedmultiply);
+  if(destination[E_AXIS] > current_position[E_AXIS])
+  {
+    help_feedrate = ((long)feedrate*(long)feedmultiply);
+  }
+  else
+  {
+    help_feedrate = ((long)feedrate*(long)100);
+  }
+  
   plan_buffer_line(destination[X_AXIS], destination[Y_AXIS], destination[Z_AXIS], destination[E_AXIS], help_feedrate/6000.0);
   
   for(int i=0; i < NUM_AXIS; i++)
@@ -1821,8 +1844,15 @@ void prepare_arc_move(char isclockwise)
   float r = hypot(offset[X_AXIS], offset[Y_AXIS]); // Compute arc radius for mc_arc
   long help_feedrate = 0;
 
-  
-  help_feedrate = ((long)feedrate*(long)feedmultiply);
+  if(destination[E_AXIS] > current_position[E_AXIS])
+  {
+    help_feedrate = ((long)feedrate*(long)feedmultiply);
+  }
+  else
+  {
+    help_feedrate = ((long)feedrate*(long)100);
+  }
+
   // Trace the arc
   mc_arc(current_position, destination, offset, X_AXIS, Y_AXIS, Z_AXIS, help_feedrate/6000.0, r, isclockwise);
   
@@ -2266,6 +2296,8 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->steps_y = labs(target[Y_AXIS]-position[Y_AXIS]);
   block->steps_z = labs(target[Z_AXIS]-position[Z_AXIS]);
   block->steps_e = labs(target[E_AXIS]-position[E_AXIS]);
+  block->steps_e *= extrudemultiply;
+  block->steps_e /= 100;
   block->step_event_count = max(block->steps_x, max(block->steps_y, max(block->steps_z, block->steps_e)));
 
   // Bail if this is a zero-length block
@@ -2325,7 +2357,8 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   delta_mm[X_AXIS] = (target[X_AXIS]-position[X_AXIS])/axis_steps_per_unit[X_AXIS];
   delta_mm[Y_AXIS] = (target[Y_AXIS]-position[Y_AXIS])/axis_steps_per_unit[Y_AXIS];
   delta_mm[Z_AXIS] = (target[Z_AXIS]-position[Z_AXIS])/axis_steps_per_unit[Z_AXIS];
-  delta_mm[E_AXIS] = (target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS];
+  //delta_mm[E_AXIS] = (target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS];
+  delta_mm[E_AXIS] = ((target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS])*extrudemultiply/100.0;
   
   if ( block->steps_x == 0 && block->steps_y == 0 && block->steps_z == 0 ) {
     block->millimeters = fabs(delta_mm[E_AXIS]);
@@ -2341,10 +2374,8 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->nominal_speed = block->millimeters * inverse_second; // (mm/sec) Always > 0
   block->nominal_rate = ceil(block->step_event_count * inverse_second); // (step/sec) Always > 0
 
-  
- 
 
-  
+
 /*
   //  segment time im micro seconds
   long segment_time = lround(1000000.0/inverse_second);
@@ -2531,6 +2562,12 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
     getHighESpeed();
   #endif
   st_wake_up();
+}
+
+int calc_plannerpuffer_fill(void)
+{
+  int moves_queued=(block_buffer_head-block_buffer_tail + BLOCK_BUFFER_SIZE) & (BLOCK_BUFFER_SIZE - 1);
+  return(moves_queued);
 }
 
 void plan_set_position(float x, float y, float z, float e)
