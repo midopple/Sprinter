@@ -101,6 +101,7 @@
  Version 1.3.13T
 - Extrudmultiply
 - use Feedratefaktor only when Extrude > 0
+- M106 / M107 can drive the FAN with PWM + Port check for not using Timer 1
 
 
   
