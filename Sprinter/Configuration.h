@@ -233,6 +233,15 @@ const int dropsegments=5; //everything with less than this number of steps will 
 #define N_ARC_CORRECTION 25
 
 //-----------------------------------------------------------------------
+//// FANCONTROL WITH SOFT PWM
+//-----------------------------------------------------------------------
+
+//With this option its possible to drive the fan with SOFT PWM (500hz) and use
+//every Digital output for it, main usage for Sanguinololu
+#define FAN_SOFT_PWM
+
+
+//-----------------------------------------------------------------------
 //// HEATERCONTROL AND PID PARAMETERS
 //-----------------------------------------------------------------------
 

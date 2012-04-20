@@ -39,6 +39,7 @@ extern uint32_t filesize;
 extern uint32_t sdpos;
 extern bool sdmode;
 extern volatile int feedmultiply;
+extern volatile int extrudemultiply;
 #ifdef PIDTEMP
   extern volatile unsigned char g_heater_pwm_val;
 #endif
@@ -139,8 +140,10 @@ void manage_display(void)
         else
         {
            start_millis_SD_card = millis();
-           lcd.print(" PWM:");
-           lcd.print((unsigned char)g_heater_pwm_val*1);
+           #ifdef PIDTEMP
+             lcd.print(" PWM:");
+             lcd.print((unsigned char)g_heater_pwm_val*1);
+           #endif
         }
 
       break;
@@ -179,9 +182,12 @@ void manage_display(void)
         else
         {
           
-          lcd.print("FM: ");
+          lcd.print("FM/EM:");
           lcd.print(feedmultiply);
-          lcd.print("  PlanH: ");
+          lcd.print("/");
+          lcd.print(extrudemultiply);
+          
+          lcd.print(" P:");
         }
 
          

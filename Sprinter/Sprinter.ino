@@ -78,9 +78,9 @@
    The beginning of the line is still interpreted.
    
  - Same fix for SD Card, testet and work
-  
-Version 1.3.09T  
-- Move SLOWDOWN Function up
+
+ Version 1.3.09T  
+ - Move SLOWDOWN Function up
  
  Version 1.3.10T
 - Add info to GEN7 Pins
@@ -94,7 +94,23 @@ Version 1.3.09T
 - Make fastio & Arduino pin numbering consistent for AT90USB128x. --> Thanks to lincomatic
 - Select Speedtable with F_CPU
 - Use same Values for Speedtables as Marlin 
-- Extrudmultiply
+-
+
+ Version 1.3.12T
+- Fixed arc offset.
+
+ Version 1.3.13T
+- Extrudmultiply with code M221 Sxxx (S100 original Extrude value)
+- use Feedratefaktor only when Extrude > 0
+- M106 / M107 can drive the FAN with PWM + Port check for not using Timer 1
+- Added M93 command. Sends current steps for all axis.
+- New Option --> FAN_SOFT_PWM, with this option the FAN PWM can use every digital I/O
+
+ Version 1.3.14T
+- When endstop is hit count the virtual steps, so the print lose no position when endstop is hit
+
+ 
+  
 
 */
 
@@ -176,6 +192,7 @@ void __cxa_pure_virtual(){};
 //        or use S<seconds> to specify an inactivity timeout, after which the steppers will be disabled.  S0 to disable the timeout.
 // M85  - Set inactivity shutdown timer with parameter S<seconds>. To disable set zero (default)
 // M92  - Set axis_steps_per_unit - same syntax as G92
+// M93  - Send axis_steps_per_unit
 // M115	- Capabilities string
 // M119 - Show Endstopper State 
 // M140 - Set bed target temp
@@ -187,6 +204,7 @@ void __cxa_pure_virtual(){};
 // M205 - advanced settings:  minimum travel speed S=while printing T=travel only,  X= maximum xy jerk, Z=maximum Z jerk
 
 // M220 - set speed factor override percentage S:factor in percent 
+// M221 - set extruder multiply factor S100 --> original Extrude Speed 
 
 // M500 - stores paramters in EEPROM
 // M501 - reads parameters from EEPROM (if you need reset them after you changed them temporarily).
@@ -199,7 +217,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.11T / 19.03.2012"
+#define _VERSION_TEXT "1.3.14T / 20.04.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -242,6 +260,10 @@ volatile int extrudemultiply=100; //100->1 200->2
 float destination[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
 float current_position[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
 
+static unsigned short virtual_steps_x = 0;
+static unsigned short virtual_steps_y = 0;
+static unsigned short virtual_steps_z = 0;
+
 bool home_all_axis = true;
 //unsigned ?? ToDo: Check
 int feedrate = 1500, next_feedrate, saved_feedrate;
@@ -254,6 +276,8 @@ bool relative_mode = false;  //Determines Absolute or Relative Coordinates
 //float time_for_move;
 //bool relative_mode_e = false;  //Determines Absolute or Relative E Codes while in Absolute Coordinates mode. E is always relative in Relative Coordinates mode.
 //long timediff = 0;
+
+bool is_homing = false;
 
 //experimental feedrate calc
 //float d = 0;
@@ -556,6 +580,39 @@ int FreeRam1(void)
 }
 
 //------------------------------------------------
+//Function the check the Analog OUT pin for not using the Timer1
+//------------------------------------------------
+void analogWrite_check(uint8_t check_pin, int val)
+{
+  #if defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__) 
+  //Atmega168 / 328 can not useed OCR1A and OCR1B
+  //This are PINS PB1 / PB2 or on Ardurino D9 / D10
+    if((check_pin != 9) && (check_pin != 10))
+    {
+        analogWrite(check_pin, val);
+    }
+  #endif
+  
+  #if defined(__AVR_ATmega644P__) || defined(__AVR_ATmega1284P__) 
+  //Atmega664P / 1284P can not useed OCR1A and OCR1B
+  //This are PINS PD4 / PD5 or on Ardurino D12 / D13
+    if((check_pin != 12) && (check_pin != 13))
+    {
+        analogWrite(check_pin, val);
+    }
+  #endif
+
+  #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) 
+  //Atmega1280 / 2560 can not useed OCR1A, OCR1B and OCR1C
+  //This are PINS PB5,PB6,PB7 or on Ardurino D11,D12,and D13
+    if((check_pin != 11) && (check_pin != 12) && (check_pin != 13))
+    {
+        analogWrite(check_pin, val);
+    }
+  #endif  
+}
+
+//------------------------------------------------
 //Print a String from Flash to Serial (save RAM)
 //------------------------------------------------
 void showString (PGM_P s) 
@@ -683,7 +740,9 @@ void setup()
   #if (FAN_PIN > -1) 
     SET_OUTPUT(FAN_PIN);
   #endif
-  
+
+  SET_OUTPUT(30);  
+
   //Initialize Alarm Pin
   #if (ALARM_PIN > -1) 
     SET_OUTPUT(ALARM_PIN);
@@ -748,7 +807,7 @@ void setup()
 
 #endif
 
-  #ifdef PID_SOFT_PWM
+  #if defined(PID_SOFT_PWM) || (defined(FAN_SOFT_PWM) && (FAN_PIN > -1))
   showString(PSTR("Soft PWM Init\r\n"));
   init_Timer2_softpwm();
   #endif
@@ -994,6 +1053,12 @@ void get_command()
 
 }
 
+static bool check_endstops = true;
+
+void enable_endstops(bool check)
+{
+  check_endstops = check;
+}
 
 FORCE_INLINE float code_value() { return (strtod(&cmdbuffer[bufindr][strchr_pointer - cmdbuffer[bufindr] + 1], NULL)); }
 FORCE_INLINE long code_value_long() { return (strtol(&cmdbuffer[bufindr][strchr_pointer - cmdbuffer[bufindr] + 1], NULL, 10)); }
@@ -1066,6 +1131,7 @@ FORCE_INLINE void process_commands()
           destination[i] = current_position[i];
         }
         feedrate = 0;
+        is_homing = true;
 
         home_all_axis = !((code_seen(axis_codes[0])) || (code_seen(axis_codes[1])) || (code_seen(axis_codes[2])));
 
@@ -1171,6 +1237,7 @@ FORCE_INLINE void process_commands()
             enable_endstops(false);
       	#endif
       
+        is_homing = false;
         feedrate = saved_feedrate;
         feedmultiply = saved_feedmultiply;
       
@@ -1497,18 +1564,30 @@ FORCE_INLINE void process_commands()
       case 106: //M106 Fan On
         if (code_seen('S'))
         {
-            WRITE(FAN_PIN, HIGH);
-            //analogWrite(FAN_PIN, constrain(code_value(),0,255) );
+            #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+              g_fan_pwm_val = constrain(code_value(),0,255);
+            #else
+              WRITE(FAN_PIN, HIGH);
+              analogWrite_check(FAN_PIN, constrain(code_value(),0,255) );
+            #endif
         }
         else 
         {
-            WRITE(FAN_PIN, HIGH);
-            //analogWrite(FAN_PIN, 255 );
+            #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+              g_fan_pwm_val = 255;
+            #else
+              WRITE(FAN_PIN, HIGH);
+              analogWrite_check(FAN_PIN, 255 );
+            #endif
         }
         break;
       case 107: //M107 Fan Off
-          //analogWrite(FAN_PIN, 0);
-          WRITE(FAN_PIN, LOW);
+          #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+            g_fan_pwm_val = 0;
+          #else
+            analogWrite_check(FAN_PIN, 0);
+            WRITE(FAN_PIN, LOW);
+          #endif
         break;
       #endif
       #if (PS_ON_PIN > -1)
@@ -1557,6 +1636,17 @@ FORCE_INLINE void process_commands()
 //          axis_max_interval[i] = 100000000.0 / (max_start_speed_units_per_second[i] * axis_steps_per_unit[i]);//TODO: do this for
 //          all steps_per_unit related variables
 //        }
+        break;
+      case 93: // M93 show current axis steps.
+	showString(PSTR("ok "));
+	showString(PSTR("X:"));
+        Serial.print(axis_steps_per_unit[0]);
+	showString(PSTR("Y:"));
+        Serial.print(axis_steps_per_unit[1]);
+	showString(PSTR("Z:"));
+        Serial.print(axis_steps_per_unit[2]);
+	showString(PSTR("E:"));
+        Serial.println(axis_steps_per_unit[3]);
         break;
       case 115: // M115
         showString(PSTR("FIRMWARE_NAME: Sprinter Experimental PROTOCOL_VERSION:1.0 MACHINE_TYPE:Mendel EXTRUDER_COUNT:1\r\n"));
@@ -1649,7 +1739,7 @@ FORCE_INLINE void process_commands()
         if(code_seen('S')) 
         {
           feedmultiply = code_value() ;
-          constrain(feedmultiply, 20, 200);
+          feedmultiply = constrain(feedmultiply, 20, 200);
           feedmultiplychanged=true;
         }
       }
@@ -1659,7 +1749,7 @@ FORCE_INLINE void process_commands()
         if(code_seen('S')) 
         {
           extrudemultiply = code_value() ;
-          constrain(extrudemultiply, 40, 200);
+          extrudemultiply = constrain(extrudemultiply, 40, 200);
         }
       }
       break;
@@ -1769,31 +1859,44 @@ FORCE_INLINE void get_coordinates()
 }
 
 #ifdef USE_ARC_FUNCTION
-FORCE_INLINE void get_arc_coordinates()
+void get_arc_coordinates()
 {
    get_coordinates();
-   if(code_seen('I')) offset[0] = code_value();
-   if(code_seen('J')) offset[1] = code_value();
+   if(code_seen('I')) {
+     offset[0] = code_value();
+   } 
+   else {
+     offset[0] = 0.0;
+   }
+   if(code_seen('J')) {
+     offset[1] = code_value();
+   }
+   else {
+     offset[1] = 0.0;
+   }
 }
 #endif
+
 
 
 void prepare_move()
 {
   long help_feedrate = 0;
 
-  if (min_software_endstops) 
-  {
-    if (destination[X_AXIS] < 0) destination[X_AXIS] = 0.0;
-    if (destination[Y_AXIS] < 0) destination[Y_AXIS] = 0.0;
-    if (destination[Z_AXIS] < 0) destination[Z_AXIS] = 0.0;
-  }
+  if(!is_homing){
+    if (min_software_endstops) 
+    {
+      if (destination[X_AXIS] < 0) destination[X_AXIS] = 0.0;
+      if (destination[Y_AXIS] < 0) destination[Y_AXIS] = 0.0;
+      if (destination[Z_AXIS] < 0) destination[Z_AXIS] = 0.0;
+    }
 
-  if (max_software_endstops) 
-  {
-    if (destination[X_AXIS] > X_MAX_LENGTH) destination[X_AXIS] = X_MAX_LENGTH;
-    if (destination[Y_AXIS] > Y_MAX_LENGTH) destination[Y_AXIS] = Y_MAX_LENGTH;
-    if (destination[Z_AXIS] > Z_MAX_LENGTH) destination[Z_AXIS] = Z_MAX_LENGTH;
+    if (max_software_endstops) 
+    {
+      if (destination[X_AXIS] > X_MAX_LENGTH) destination[X_AXIS] = X_MAX_LENGTH;
+      if (destination[Y_AXIS] > Y_MAX_LENGTH) destination[Y_AXIS] = Y_MAX_LENGTH;
+      if (destination[Z_AXIS] > Z_MAX_LENGTH) destination[Z_AXIS] = Z_MAX_LENGTH;
+    }
   }
 
   if(destination[E_AXIS] > current_position[E_AXIS])
@@ -2318,7 +2421,7 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   if(block->steps_e != 0) enable_e();
  #endif 
  
- if (block->steps_e == 0) {
+  if (block->steps_e == 0) {
         if(feed_rate<mintravelfeedrate) feed_rate=mintravelfeedrate;
   }
   else {
@@ -2555,6 +2658,10 @@ void plan_set_position(float x, float y, float z, float e)
   position[Z_AXIS] = lround(z*axis_steps_per_unit[Z_AXIS]);     
   position[E_AXIS] = lround(e*axis_steps_per_unit[E_AXIS]);  
 
+  virtual_steps_x = 0;
+  virtual_steps_y = 0;
+  virtual_steps_z = 0;
+
   previous_nominal_speed = 0.0; // Resets planner junction speeds. Assumes start from rest.
   previous_speed[0] = 0.0;
   previous_speed[1] = 0.0;
@@ -2571,16 +2678,19 @@ void getHighESpeed()
   if((target_temp+2) < autotemp_min)  //probably temperature set to zero.
     return; //do nothing
   
-  float high=0;
+  float high=0.0;
   uint8_t block_index = block_buffer_tail;
   
-  while(block_index != block_buffer_head)
-  {
-    float se=block_buffer[block_index].steps_e/float(block_buffer[block_index].step_event_count)*block_buffer[block_index].nominal_rate;
-    //se; units steps/sec;
-    if(se>high)
-    {
-      high=se;
+  while(block_index != block_buffer_head) {
+    if((block_buffer[block_index].steps_x != 0) ||
+       (block_buffer[block_index].steps_y != 0) ||
+       (block_buffer[block_index].steps_z != 0)) {
+      float se=(float(block_buffer[block_index].steps_e)/float(block_buffer[block_index].step_event_count))*block_buffer[block_index].nominal_speed;
+      //se; units steps/sec;
+      if(se>high)
+      {
+        high=se;
+      }
     }
     block_index = (block_index+1) & (BLOCK_BUFFER_SIZE - 1);
   }
@@ -2602,7 +2712,6 @@ void getHighESpeed()
 
 }
 #endif
-
 
 
 
@@ -2720,8 +2829,6 @@ static bool old_y_max_endstop=false;
 static bool old_z_min_endstop=false;
 static bool old_z_max_endstop=false;
 
-static bool check_endstops = true;
-
 
 
 //         __________________________
@@ -2747,10 +2854,6 @@ void st_wake_up()
   ENABLE_STEPPER_DRIVER_INTERRUPT();  
 }
 
-void enable_endstops(bool check)
-{
-  check_endstops = check;
-}
 
 FORCE_INLINE unsigned short calc_timer(unsigned short step_rate)
 {
@@ -2817,6 +2920,8 @@ FORCE_INLINE void trapezoid_generator_reset()
 // It pops blocks from the block_buffer and executes them by pulsing the stepper pins appropriately. 
 ISR(TIMER1_COMPA_vect)
 {        
+
+  WRITE(30,HIGH);
   // If there is no current block, attempt to pop one from the buffer
   if (current_block == NULL) {
     // Anything in the buffer?
@@ -2840,7 +2945,6 @@ ISR(TIMER1_COMPA_vect)
   if (current_block != NULL) {
     // Set directions TO DO This should be done once during init of trapezoid. Endstops -> interrupt
     out_bits = current_block->direction_bits;
-
     // Set direction en check limit switches
     if ((out_bits & (1<<X_AXIS)) != 0) {   // -direction
       WRITE(X_DIR_PIN, INVERT_X_DIR);
@@ -2849,10 +2953,18 @@ ISR(TIMER1_COMPA_vect)
         #if X_MIN_PIN > -1
           bool x_min_endstop=(READ(X_MIN_PIN) != X_ENDSTOP_INVERT);
           if(x_min_endstop && old_x_min_endstop && (current_block->steps_x > 0)) {
-            endstop_x_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_x_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_x_hit=false;
           }
           old_x_min_endstop = x_min_endstop;
+        #else
+          endstop_x_hit=false;
         #endif
       }
     }
@@ -2863,10 +2975,18 @@ ISR(TIMER1_COMPA_vect)
         #if X_MAX_PIN > -1
           bool x_max_endstop=(READ(X_MAX_PIN) != X_ENDSTOP_INVERT);
           if(x_max_endstop && old_x_max_endstop && (current_block->steps_x > 0)){
-            endstop_x_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_x_hit=true;
+            else    
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_x_hit=false;
           }
           old_x_max_endstop = x_max_endstop;
+        #else
+          endstop_x_hit=false;
         #endif
       }
     }
@@ -2878,10 +2998,18 @@ ISR(TIMER1_COMPA_vect)
         #if Y_MIN_PIN > -1
           bool y_min_endstop=(READ(Y_MIN_PIN) != Y_ENDSTOP_INVERT);
           if(y_min_endstop && old_y_min_endstop && (current_block->steps_y > 0)) {
-            endstop_y_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_y_hit=true;
+            else
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_y_hit=false;
           }
           old_y_min_endstop = y_min_endstop;
+        #else
+          endstop_y_hit=false;  
         #endif
       }
     }
@@ -2892,10 +3020,18 @@ ISR(TIMER1_COMPA_vect)
         #if Y_MAX_PIN > -1
           bool y_max_endstop=(READ(Y_MAX_PIN) != Y_ENDSTOP_INVERT);
           if(y_max_endstop && old_y_max_endstop && (current_block->steps_y > 0)){
-            endstop_y_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_y_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_y_hit=false;
           }
           old_y_max_endstop = y_max_endstop;
+        #else
+          endstop_y_hit=false;  
         #endif
       }
     }
@@ -2907,10 +3043,18 @@ ISR(TIMER1_COMPA_vect)
         #if Z_MIN_PIN > -1
           bool z_min_endstop=(READ(Z_MIN_PIN) != Z_ENDSTOP_INVERT);
           if(z_min_endstop && old_z_min_endstop && (current_block->steps_z > 0)) {
-            endstop_z_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)  
+              endstop_z_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_z_hit=false;
           }
           old_z_min_endstop = z_min_endstop;
+        #else
+          endstop_z_hit=false;  
         #endif
       }
     }
@@ -2921,10 +3065,18 @@ ISR(TIMER1_COMPA_vect)
         #if Z_MAX_PIN > -1
           bool z_max_endstop=(READ(Z_MAX_PIN) != Z_ENDSTOP_INVERT);
           if(z_max_endstop && old_z_max_endstop && (current_block->steps_z > 0)) {
-            endstop_z_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_z_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_z_hit=false;
           }
           old_z_max_endstop = z_max_endstop;
+        #else
+          endstop_z_hit=false;  
         #endif
       }
     }
@@ -2954,24 +3106,51 @@ ISR(TIMER1_COMPA_vect)
         }
       }    
       #endif //ADVANCE
-      
+
       counter_x += current_block->steps_x;
       if (counter_x > 0) {
-        WRITE(X_STEP_PIN, HIGH);
+        if(!endstop_x_hit)
+        {
+          if(virtual_steps_x)
+            virtual_steps_x--;
+          else
+            WRITE(X_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_x++;
+          
         counter_x -= current_block->step_event_count;
         WRITE(X_STEP_PIN, LOW);
       }
 
       counter_y += current_block->steps_y;
       if (counter_y > 0) {
-        WRITE(Y_STEP_PIN, HIGH);
+        if(!endstop_y_hit)
+        {
+          if(virtual_steps_y)
+            virtual_steps_y--;
+          else
+            WRITE(Y_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_y++;
+            
         counter_y -= current_block->step_event_count;
         WRITE(Y_STEP_PIN, LOW);
       }
 
       counter_z += current_block->steps_z;
       if (counter_z > 0) {
-        WRITE(Z_STEP_PIN, HIGH);
+        if(!endstop_z_hit)
+        {
+          if(virtual_steps_z)
+            virtual_steps_z--;
+          else
+            WRITE(Z_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_z++;
+          
         counter_z -= current_block->step_event_count;
         WRITE(Z_STEP_PIN, LOW);
       }
@@ -2984,8 +3163,10 @@ ISR(TIMER1_COMPA_vect)
           WRITE(E_STEP_PIN, LOW);
         }
       #endif //!ADVANCE
+
       step_events_completed += 1;  
       if(step_events_completed >= current_block->step_event_count) break;
+      
     }
     // Calculare new timer value
     unsigned short timer;
@@ -3052,6 +3233,8 @@ ISR(TIMER1_COMPA_vect)
       plan_discard_current_block();
     }   
   } 
+
+  WRITE(30,LOW);
 }
 
 #ifdef ADVANCE
