@@ -166,7 +166,9 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 //#define STEP_DELAY_RATIO 0.25
 
 ///Oscillation reduction.  Forces x,y,or z axis to be stationary for ## ms before allowing axis to switch direcitons.  Alternative method to prevent skipping steps.  Uncomment the line below to activate.
+// At this Version with Planner this Function ist not used
 //#define RAPID_OSCILLATION_REDUCTION
+
 #ifdef RAPID_OSCILLATION_REDUCTION
 long min_time_before_dir_change = 30; //milliseconds
 #endif
@@ -229,6 +231,26 @@ const int dropsegments=5; //everything with less than this number of steps will 
 #define MM_PER_ARC_SEGMENT 1
 //After this count of steps a new SIN / COS caluclation is startet to correct the circle interpolation
 #define N_ARC_CORRECTION 25
+
+//-----------------------------------------------------------------------
+//// FANCONTROL WITH SOFT PWM
+//-----------------------------------------------------------------------
+
+//With this option its possible to drive the fan with SOFT PWM (500hz) and use
+//every Digital output for it, main usage for Sanguinololu
+#define FAN_SOFT_PWM
+
+//-----------------------------------------------------------------------
+//// MINIMUM START SPEED FOR FAN
+//-----------------------------------------------------------------------
+
+//Minimum start speed for FAN when the last speed was zero
+//Set to 0 to deaktivate
+//If value is set the fan will drive with this minimum speed for MINIMUM_FAN_START_TIME
+#define MINIMUM_FAN_START_SPEED  0
+
+//This is the time how long the minimum FAN speed is set
+#define MINIMUM_FAN_START_TIME  6000    //6sec
 
 //-----------------------------------------------------------------------
 //// HEATERCONTROL AND PID PARAMETERS

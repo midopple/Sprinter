@@ -28,9 +28,6 @@
   https://github.com/ErikZalm/Marlin-non-gen6
   
   Sprinter Changelog
-  
-  -  Added M93 command. Sends current steps for all axis.
-  
   -  Look forward function --> calculate 16 Steps forward, get from Firmaware Marlin and Grbl
   -  Stepper control with Timer 1 (Interrupt)
   -  Extruder heating with PID use a Softpwm (Timer 2) with 500 hz to free Timer1 für Steppercontrol
@@ -97,16 +94,24 @@
 - Make fastio & Arduino pin numbering consistent for AT90USB128x. --> Thanks to lincomatic
 - Select Speedtable with F_CPU
 - Use same Values for Speedtables as Marlin 
+-
 
  Version 1.3.12T
 - Fixed arc offset.
 
  Version 1.3.13T
-- Extrudmultiply
+- Extrudmultiply with code M221 Sxxx (S100 original Extrude value)
 - use Feedratefaktor only when Extrude > 0
 - M106 / M107 can drive the FAN with PWM + Port check for not using Timer 1
+- Added M93 command. Sends current steps for all axis.
+- New Option --> FAN_SOFT_PWM, with this option the FAN PWM can use every digital I/O
 
+ Version 1.3.14T
+- When endstop is hit count the virtual steps, so the print lose no position when endstop is hit
 
+ Version 1.3.15T
+- M206 - set additional homeing offset 
+- Option for minimum FAN start speed --> #define MINIMUM_FAN_START_SPEED  50  (set it to zero to deaktivate)
   
 
 */
@@ -194,8 +199,10 @@ void __cxa_pure_virtual(){};
 // M203 - Set temperture monitor to Sx
 // M204 - Set default acceleration: S normal moves T filament only moves (M204 S3000 T7000) im mm/sec^2 
 // M205 - advanced settings:  minimum travel speed S=while printing T=travel only,  X= maximum xy jerk, Z=maximum Z jerk
+// M206 - set additional homeing offset
 
 // M220 - set speed factor override percentage S:factor in percent 
+// M221 - set extruder multiply factor S100 --> original Extrude Speed 
 
 // M500 - stores paramters in EEPROM
 // M501 - reads parameters from EEPROM (if you need reset them after you changed them temporarily).
@@ -208,7 +215,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.13T / 30.03.2012"
+#define _VERSION_TEXT "1.3.15T / 22.04.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -250,7 +257,11 @@ volatile int extrudemultiply=100; //100->1 200->2
 //unsigned long interval;
 float destination[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
 float current_position[NUM_AXIS] = {0.0, 0.0, 0.0, 0.0};
+float add_homeing[3]={0,0,0};
 
+static unsigned short virtual_steps_x = 0;
+static unsigned short virtual_steps_y = 0;
+static unsigned short virtual_steps_z = 0;
 
 bool home_all_axis = true;
 //unsigned ?? ToDo: Check
@@ -286,6 +297,12 @@ float offset[3] = {0.0, 0.0, 0.0};
   float cumm_wait_time_in_dir[NUM_AXIS]={0.0,0.0,0.0,0.0};
   bool prev_move_direction[NUM_AXIS]={1,1,1,1};
   float osc_wait_remainder = 0.0;
+#endif
+
+#if (MINIMUM_FAN_START_SPEED > 0)
+  unsigned char fan_last_speed = 0;
+  unsigned char fan_org_start_speed = 0;
+  unsigned long previous_millis_fan_start = 0;
 #endif
 
 // comm variables and Commandbuffer
@@ -793,7 +810,7 @@ void setup()
 
 #endif
 
-  #ifdef PID_SOFT_PWM
+  #if defined(PID_SOFT_PWM) || (defined(FAN_SOFT_PWM) && (FAN_PIN > -1))
   showString(PSTR("Soft PWM Init\r\n"));
   init_Timer2_softpwm();
   #endif
@@ -867,6 +884,10 @@ void loop()
   //check heater every n milliseconds
   manage_heater();
   manage_inactivity(1);
+  #if (MINIMUM_FAN_START_SPEED > 0)
+    manage_fan_start_speed();
+  #endif
+  
 }
 
 //------------------------------------------------
@@ -886,7 +907,7 @@ void check_buffer_while_arc()
 //------------------------------------------------
 void get_command() 
 { 
-  while( Serial.available() > 0  && buflen < BUFSIZE)
+  while( Serial.available() > 0 && buflen < BUFSIZE)
   {
     serial_char = Serial.read();
     if(serial_char == '\n' || serial_char == '\r' || serial_char == ':' || serial_count >= (MAX_CMD_SIZE - 1) ) 
@@ -995,7 +1016,7 @@ void get_command()
   {
     return;
   }
-  while( filesize > sdpos  && buflen < BUFSIZE)
+  while( filesize > sdpos && buflen < BUFSIZE)
   {
     serial_char = file.read();
     read_char_int = (int)serial_char;
@@ -1143,6 +1164,7 @@ FORCE_INLINE void process_commands()
             st_synchronize();
   
             current_position[X_AXIS] = (X_HOME_DIR == -1) ? 0 : X_MAX_LENGTH;
+            current_position[X_AXIS] += add_homeing[0];
             plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
             destination[X_AXIS] = current_position[X_AXIS];
             feedrate = 0;
@@ -1175,6 +1197,7 @@ FORCE_INLINE void process_commands()
             st_synchronize();
   
             current_position[Y_AXIS] = (Y_HOME_DIR == -1) ? 0 : Y_MAX_LENGTH;
+            current_position[Y_AXIS] += add_homeing[1];
             plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
             destination[Y_AXIS] = current_position[Y_AXIS];
             feedrate = 0;
@@ -1207,6 +1230,7 @@ FORCE_INLINE void process_commands()
             st_synchronize();
   
             current_position[Z_AXIS] = (Z_HOME_DIR == -1) ? 0 : Z_MAX_LENGTH;
+            current_position[Z_AXIS] += add_homeing[2];
             plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
             destination[Z_AXIS] = current_position[Z_AXIS];
             feedrate = 0;         
@@ -1509,6 +1533,9 @@ FORCE_INLINE void process_commands()
             codenum = millis();
           }
           manage_heater();
+          #if (MINIMUM_FAN_START_SPEED > 0)
+            manage_fan_start_speed();
+          #endif
           #ifdef TEMP_RESIDENCY_TIME
             /* start/restart the TEMP_RESIDENCY_TIME timer whenever we reach target temp for the first time
                or when current temp falls outside the hysteresis after target temp was reached */
@@ -1537,6 +1564,9 @@ FORCE_INLINE void process_commands()
             codenum = millis(); 
           }
           manage_heater();
+          #if (MINIMUM_FAN_START_SPEED > 0)
+            manage_fan_start_speed();
+          #endif
         }
       #endif
       break;
@@ -1544,18 +1574,51 @@ FORCE_INLINE void process_commands()
       case 106: //M106 Fan On
         if (code_seen('S'))
         {
-            WRITE(FAN_PIN, HIGH);
-            analogWrite_check(FAN_PIN, constrain(code_value(),0,255) );
+            unsigned char l_fan_code_val = constrain(code_value(),0,255);
+            
+            #if (MINIMUM_FAN_START_SPEED > 0)
+              if(l_fan_code_val > 0 && fan_last_speed == 0)
+              {
+                 if(l_fan_code_val < MINIMUM_FAN_START_SPEED)
+                 {
+                   fan_org_start_speed = l_fan_code_val;
+                   l_fan_code_val = MINIMUM_FAN_START_SPEED;
+                   previous_millis_fan_start = millis();
+                 }
+                 fan_last_speed = l_fan_code_val;  
+              }  
+              else
+              {
+                fan_last_speed = l_fan_code_val;
+                fan_org_start_speed = 0;
+              }  
+            #endif
+          
+            #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+              g_fan_pwm_val = l_fan_code_val;
+            #else
+              WRITE(FAN_PIN, HIGH);
+              analogWrite_check(FAN_PIN, l_fan_code_val;
+            #endif
+            
         }
         else 
         {
-            WRITE(FAN_PIN, HIGH);
-            analogWrite_check(FAN_PIN, 255 );
+            #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+              g_fan_pwm_val = 255;
+            #else
+              WRITE(FAN_PIN, HIGH);
+              analogWrite_check(FAN_PIN, 255 );
+            #endif
         }
         break;
       case 107: //M107 Fan Off
-          analogWrite_check(FAN_PIN, 0);
-          WRITE(FAN_PIN, LOW);
+          #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
+            g_fan_pwm_val = 0;
+          #else
+            analogWrite_check(FAN_PIN, 0);
+            WRITE(FAN_PIN, LOW);
+          #endif
         break;
       #endif
       #if (PS_ON_PIN > -1)
@@ -1701,6 +1764,12 @@ FORCE_INLINE void process_commands()
       //if(code_seen('B')) minsegmenttime = code_value() ;
         if(code_seen('X')) max_xy_jerk = code_value() ;
         if(code_seen('Z')) max_z_jerk = code_value() ;
+      break;
+      case 206: // M206 additional homeing offset
+        for(int8_t cnt_i=0; cnt_i < 3; cnt_i++) 
+        {
+          if(code_seen(axis_codes[cnt_i])) add_homeing[cnt_i] = code_value();
+        }
       break;  
       case 220: // M220 S<factor in percent>- set speed factor override percentage
       {
@@ -1851,8 +1920,7 @@ void prepare_move()
 {
   long help_feedrate = 0;
 
-  if(!is_homing)
-  {
+  if(!is_homing){
     if (min_software_endstops) 
     {
       if (destination[X_AXIS] < 0) destination[X_AXIS] = 0.0;
@@ -1867,7 +1935,7 @@ void prepare_move()
       if (destination[Z_AXIS] > Z_MAX_LENGTH) destination[Z_AXIS] = Z_MAX_LENGTH;
     }
   }
-  
+
   if(destination[E_AXIS] > current_position[E_AXIS])
   {
     help_feedrate = ((long)feedrate*(long)feedmultiply);
@@ -1950,8 +2018,27 @@ FORCE_INLINE void manage_inactivity(byte debug)
   check_axes_activity();
 }
 
-
-
+#if (MINIMUM_FAN_START_SPEED > 0)
+void manage_fan_start_speed(void)
+{
+  if(fan_org_start_speed > 0)
+  {
+     if((millis() - previous_millis_fan_start) > MINIMUM_FAN_START_TIME )
+     { 
+       #if FAN_PIN > -1
+         #if defined(FAN_SOFT_PWM)
+           g_fan_pwm_val = fan_org_start_speed;
+         #else
+           WRITE(FAN_PIN, HIGH);
+           analogWrite_check(FAN_PIN, fan_org_start_speed;
+         #endif  
+       #endif
+       
+       fan_org_start_speed = 0;
+     }  
+  }
+}
+#endif
 
 // Planner with Interrupt for Stepper
 
@@ -2323,6 +2410,9 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   while(block_buffer_tail == next_buffer_head) { 
     manage_heater(); 
     manage_inactivity(1); 
+    #if (MINIMUM_FAN_START_SPEED > 0)
+      manage_fan_start_speed();
+    #endif 
   }
 
   // The target position of the tool in absolute steps
@@ -2423,8 +2513,10 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->nominal_speed = block->millimeters * inverse_second; // (mm/sec) Always > 0
   block->nominal_rate = ceil(block->step_event_count * inverse_second); // (step/sec) Always > 0
 
+  
+ 
 
-
+  
 /*
   //  segment time im micro seconds
   long segment_time = lround(1000000.0/inverse_second);
@@ -2626,6 +2718,10 @@ void plan_set_position(float x, float y, float z, float e)
   position[Z_AXIS] = lround(z*axis_steps_per_unit[Z_AXIS]);     
   position[E_AXIS] = lround(e*axis_steps_per_unit[E_AXIS]);  
 
+  virtual_steps_x = 0;
+  virtual_steps_y = 0;
+  virtual_steps_z = 0;
+
   previous_nominal_speed = 0.0; // Resets planner junction speeds. Assumes start from rest.
   previous_speed[0] = 0.0;
   previous_speed[1] = 0.0;
@@ -2642,16 +2738,19 @@ void getHighESpeed()
   if((target_temp+2) < autotemp_min)  //probably temperature set to zero.
     return; //do nothing
   
-  float high=0;
+  float high=0.0;
   uint8_t block_index = block_buffer_tail;
   
-  while(block_index != block_buffer_head)
-  {
-    float se=block_buffer[block_index].steps_e/float(block_buffer[block_index].step_event_count)*block_buffer[block_index].nominal_rate;
-    //se; units steps/sec;
-    if(se>high)
-    {
-      high=se;
+  while(block_index != block_buffer_head) {
+    if((block_buffer[block_index].steps_x != 0) ||
+       (block_buffer[block_index].steps_y != 0) ||
+       (block_buffer[block_index].steps_z != 0)) {
+      float se=(float(block_buffer[block_index].steps_e)/float(block_buffer[block_index].step_event_count))*block_buffer[block_index].nominal_speed;
+      //se; units steps/sec;
+      if(se>high)
+      {
+        high=se;
+      }
     }
     block_index = (block_index+1) & (BLOCK_BUFFER_SIZE - 1);
   }
@@ -2913,10 +3012,18 @@ ISR(TIMER1_COMPA_vect)
         #if X_MIN_PIN > -1
           bool x_min_endstop=(READ(X_MIN_PIN) != X_ENDSTOP_INVERT);
           if(x_min_endstop && old_x_min_endstop && (current_block->steps_x > 0)) {
-            endstop_x_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_x_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_x_hit=false;
           }
           old_x_min_endstop = x_min_endstop;
+        #else
+          endstop_x_hit=false;
         #endif
       }
     }
@@ -2927,10 +3034,18 @@ ISR(TIMER1_COMPA_vect)
         #if X_MAX_PIN > -1
           bool x_max_endstop=(READ(X_MAX_PIN) != X_ENDSTOP_INVERT);
           if(x_max_endstop && old_x_max_endstop && (current_block->steps_x > 0)){
-            endstop_x_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_x_hit=true;
+            else    
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_x_hit=false;
           }
           old_x_max_endstop = x_max_endstop;
+        #else
+          endstop_x_hit=false;
         #endif
       }
     }
@@ -2942,10 +3057,18 @@ ISR(TIMER1_COMPA_vect)
         #if Y_MIN_PIN > -1
           bool y_min_endstop=(READ(Y_MIN_PIN) != Y_ENDSTOP_INVERT);
           if(y_min_endstop && old_y_min_endstop && (current_block->steps_y > 0)) {
-            endstop_y_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_y_hit=true;
+            else
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_y_hit=false;
           }
           old_y_min_endstop = y_min_endstop;
+        #else
+          endstop_y_hit=false;  
         #endif
       }
     }
@@ -2956,10 +3079,18 @@ ISR(TIMER1_COMPA_vect)
         #if Y_MAX_PIN > -1
           bool y_max_endstop=(READ(Y_MAX_PIN) != Y_ENDSTOP_INVERT);
           if(y_max_endstop && old_y_max_endstop && (current_block->steps_y > 0)){
-            endstop_y_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_y_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_y_hit=false;
           }
           old_y_max_endstop = y_max_endstop;
+        #else
+          endstop_y_hit=false;  
         #endif
       }
     }
@@ -2971,10 +3102,18 @@ ISR(TIMER1_COMPA_vect)
         #if Z_MIN_PIN > -1
           bool z_min_endstop=(READ(Z_MIN_PIN) != Z_ENDSTOP_INVERT);
           if(z_min_endstop && old_z_min_endstop && (current_block->steps_z > 0)) {
-            endstop_z_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)  
+              endstop_z_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_z_hit=false;
           }
           old_z_min_endstop = z_min_endstop;
+        #else
+          endstop_z_hit=false;  
         #endif
       }
     }
@@ -2985,10 +3124,18 @@ ISR(TIMER1_COMPA_vect)
         #if Z_MAX_PIN > -1
           bool z_max_endstop=(READ(Z_MAX_PIN) != Z_ENDSTOP_INVERT);
           if(z_max_endstop && old_z_max_endstop && (current_block->steps_z > 0)) {
-            endstop_z_hit=true;
-            step_events_completed = current_block->step_event_count;
+            if(!is_homing)
+              endstop_z_hit=true;
+            else  
+              step_events_completed = current_block->step_event_count;
+          }
+          else
+          {
+            endstop_z_hit=false;
           }
           old_z_max_endstop = z_max_endstop;
+        #else
+          endstop_z_hit=false;  
         #endif
       }
     }
@@ -3018,24 +3165,52 @@ ISR(TIMER1_COMPA_vect)
         }
       }    
       #endif //ADVANCE
-      
+
+
       counter_x += current_block->steps_x;
       if (counter_x > 0) {
-        WRITE(X_STEP_PIN, HIGH);
+        if(!endstop_x_hit)
+        {
+          if(virtual_steps_x)
+            virtual_steps_x--;
+          else
+            WRITE(X_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_x++;
+          
         counter_x -= current_block->step_event_count;
         WRITE(X_STEP_PIN, LOW);
       }
 
       counter_y += current_block->steps_y;
       if (counter_y > 0) {
-        WRITE(Y_STEP_PIN, HIGH);
+        if(!endstop_y_hit)
+        {
+          if(virtual_steps_y)
+            virtual_steps_y--;
+          else
+            WRITE(Y_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_y++;
+            
         counter_y -= current_block->step_event_count;
         WRITE(Y_STEP_PIN, LOW);
       }
 
       counter_z += current_block->steps_z;
       if (counter_z > 0) {
-        WRITE(Z_STEP_PIN, HIGH);
+        if(!endstop_z_hit)
+        {
+          if(virtual_steps_z)
+            virtual_steps_z--;
+          else
+            WRITE(Z_STEP_PIN, HIGH);
+        }
+        else
+          virtual_steps_z++;
+          
         counter_z -= current_block->step_event_count;
         WRITE(Z_STEP_PIN, LOW);
       }
@@ -3195,6 +3370,9 @@ void st_synchronize()
   while(blocks_queued()) {
     manage_heater();
     manage_inactivity(1);
+    #if (MINIMUM_FAN_START_SPEED > 0)
+      manage_fan_start_speed();
+    #endif
   }   
 }
 
