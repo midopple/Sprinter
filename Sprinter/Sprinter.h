@@ -126,6 +126,10 @@ void check_buffer_while_arc();
 void print_disk_info(void);
 #endif //SDSUPPORT
 
+#if (MINIMUM_FAN_START_SPEED > 0)
+void manage_fan_start_speed(void);
+#endif
+
 #ifdef DEBUG
 void log_message(char*   message);
 void log_bool(char* message, bool value);

@@ -5,7 +5,7 @@
 
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
 // MEGA/RAMPS up to 1.2  = 3,
-// RAMPS 1.3 = 33
+// RAMPS 1.3/1.4 = 33
 // Gen6 = 5, 
 // Sanguinololu up to 1.1 = 6
 // Sanguinololu 1.2 and above = 62
@@ -16,7 +16,7 @@
 // Gen 3 Plus = 21
 // gen 3  Monolithic Electronics = 22
 // Gen3 PLUS for TechZone Gen3 Remix Motherboard = 23
-#define MOTHERBOARD 3
+#define MOTHERBOARD 33
 
 //// Thermistor settings:
 // 1 is 100k thermistor
@@ -152,6 +152,10 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 
 #define MAX_STEP_FREQUENCY 30000 // Max step frequency
 
+//For the retract (negative Extruder) move this Feedrate is used
+//The next positive Extruder move use also this feedrate, 
+//then for the next (second after retract) move the original Feedrate is used
+#define MAX_RETRACT_FEEDRATE 45    //mm/sec
 
 //-----------------------------------------------------------------------
 //// Not used at the Moment
@@ -166,7 +170,7 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 //#define STEP_DELAY_RATIO 0.25
 
 ///Oscillation reduction.  Forces x,y,or z axis to be stationary for ## ms before allowing axis to switch direcitons.  Alternative method to prevent skipping steps.  Uncomment the line below to activate.
-// At this VErsion with Planner this Function ist not used
+// At this Version with Planner this Function ist not used
 //#define RAPID_OSCILLATION_REDUCTION
 
 #ifdef RAPID_OSCILLATION_REDUCTION
@@ -240,6 +244,17 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //every Digital output for it, main usage for Sanguinololu
 #define FAN_SOFT_PWM
 
+//-----------------------------------------------------------------------
+//// MINIMUM START SPEED FOR FAN
+//-----------------------------------------------------------------------
+
+//Minimum start speed for FAN when the last speed was zero
+//Set to 0 to deaktivate
+//If value is set the fan will drive with this minimum speed for MINIMUM_FAN_START_TIME
+#define MINIMUM_FAN_START_SPEED  0
+
+//This is the time how long the minimum FAN speed is set
+#define MINIMUM_FAN_START_TIME  6000    //6sec
 
 //-----------------------------------------------------------------------
 //// HEATERCONTROL AND PID PARAMETERS
@@ -271,6 +286,10 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //Measure the MIN/MAX Value of the Hotend Temp and show it with
 //Command M601 / Command M602 Reset the MIN/MAX Value
 //#define DEBUG_HEATER_TEMP
+
+// M303 - PID relay autotune S<temperature> sets the target temperature. 
+// (default target temperature = 150C)
+#define PID_AUTOTUNE
 
 //PID Controler Settings
 #define PID_INTEGRAL_DRIVE_MAX 80 // too big, and heater will lag after changing temperature, too small and it might not compensate enough for long-term errors
