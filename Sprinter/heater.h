@@ -119,4 +119,8 @@ extern unsigned char manage_monitor;
  void init_Timer2_softpwm(void);
 #endif
 
+#ifdef PID_AUTOTUNE
+ void PID_autotune(float PIDAT_test_temp);
+#endif
+
 void manage_heater();

@@ -152,6 +152,10 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 
 #define MAX_STEP_FREQUENCY 30000 // Max step frequency
 
+//For the retract (negative Extruder) move this Feedrate is used
+//The next positive Extruder move use also this feedrate, 
+//then for the next (second after retract) move the original Feedrate is used
+#define MAX_RETRACT_FEEDRATE 45    //mm/sec
 
 //-----------------------------------------------------------------------
 //// Not used at the Moment
@@ -282,6 +286,10 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //Measure the MIN/MAX Value of the Hotend Temp and show it with
 //Command M601 / Command M602 Reset the MIN/MAX Value
 //#define DEBUG_HEATER_TEMP
+
+// M303 - PID relay autotune S<temperature> sets the target temperature. 
+// (default target temperature = 150C)
+#define PID_AUTOTUNE
 
 //PID Controler Settings
 #define PID_INTEGRAL_DRIVE_MAX 80 // too big, and heater will lag after changing temperature, too small and it might not compensate enough for long-term errors
