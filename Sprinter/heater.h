@@ -120,7 +120,7 @@ extern unsigned char manage_monitor;
 #endif
 
 #ifdef PID_AUTOTUNE
- void PID_autotune(float PIDAT_test_temp);
+ void PID_autotune(int PIDAT_test_temp);
 #endif
 
 void manage_heater();
