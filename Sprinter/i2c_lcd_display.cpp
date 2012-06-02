@@ -32,6 +32,14 @@
 #include "i2c_lcd_display.h"
 #include "heater.h"
 
+
+void show_main_page(void);
+
+unsigned char menu_level_ID = 0;
+volatile char buttons=0;  //the last checked buttons in a bit array.
+int encoderpos=0;
+short lastenc=0;
+
 extern int calc_plannerpuffer_fill(void);
 
 extern float current_position[NUM_AXIS];
@@ -47,19 +55,122 @@ extern volatile int extrudemultiply;
 
 LiquidCrystal_I2C lcd(0x20,20,4);  // set the LCD address to 0x20 for a 20 chars and 4 line display
 
+void lcdProgMemprint(const char *str)
+{
+  char ch=pgm_read_byte(str);
+  while(ch)
+  {
+    lcd.print(ch);
+    ch=pgm_read_byte(++str);
+  }
+}
+
+#define lcdprintPGM(x) lcdProgMemprint(PSTR(x))
+
+//---------------------------------------------------------------------------
+//----------------------------- CHECK ENCODER    ----------------------------
+//---------------------------------------------------------------------------
+#define EN_C (1<<2)
+#define EN_B (1<<1)
+#define EN_A (1<<0)
+
+void check_encoder_rotation(void)
+{
+  char enc=0;
+  
+  if(buttons&EN_A)
+    enc|=(1<<0);
+  if(buttons&EN_B)
+    enc|=(1<<1);
+    
+  if(enc!=lastenc)
+  {
+    switch(enc)
+    {
+    case 0:
+      if(lastenc==3)
+        encoderpos++;
+      else if(lastenc==1)
+        encoderpos--;
+    break;
+    case 1:
+      if(lastenc==0)
+        encoderpos++;
+      else if(lastenc==2)
+        encoderpos--;
+    break;
+    case 2:
+      if(lastenc==1)
+        encoderpos++;
+      else if(lastenc==3)
+        encoderpos--;
+    break;
+    case 3:
+      if(lastenc==2)
+        encoderpos++;
+      else if(lastenc==0)
+        encoderpos--;
+    break;
+    default:
+    break;
+    }
+  }
+  lastenc=enc;
+}
+//----------------------------- END CHECK ENCODER    ------------------------
+//---------------------------------------------------------------------------
+
+
 
 void init_I2C_LCD(void)
 {
   lcd.init();                      // initialize the lcd 
  
-  // Print a message to the LCD.
+  //Backlight ON
   lcd.backlight();
-  //lcd.print("Sprinter with LCD");
 }
+
+
 
 void manage_display(void)
 {
   static unsigned long previous_millis_LCD = 0;
+  static unsigned long previous_millis_button = 0;
+  
+  if((millis() - previous_millis_button) > 100 )
+  {
+    previous_millis_button = millis();
+  
+    check_encoder_rotation();
+    
+  }  
+  
+  if((millis() - previous_millis_LCD) > 250 )
+  {
+    previous_millis_LCD = millis();
+    
+    switch(menu_level_ID)
+    {
+      case 0:
+        show_main_page();
+      break;
+      case 1:
+          
+      break;
+      default:
+        menu_level_ID = 0;
+      break;  
+    }
+  }
+  
+  
+  
+}
+
+
+void show_main_page(void)
+{
+    
   static unsigned long start_millis_SD_card = 0;
   static unsigned char state_cnt_LCD = 0;
   int hotendtC_LCD,bedtempC_LCD,bed_tardet_temp;
@@ -69,10 +180,6 @@ void manage_display(void)
   int help_int_calc = 0;
   float help_float_calc = 0;
   
-  if((millis() - previous_millis_LCD) > 250 )
-  {
-    previous_millis_LCD = millis();
-    
     switch(state_cnt_LCD)
     {
     
@@ -86,32 +193,30 @@ void manage_display(void)
         #endif
 
         lcd.setCursor(0,0);
-        lcd.print("                    ");
+        lcdprintPGM("                    ");
         lcd.setCursor(0,0);
-        lcd.print("H:");
+        lcdprintPGM("H:");
         lcd.print(hotendtC_LCD);
-        lcd.print("/");
+        lcdprintPGM("/");
         lcd.print(target_temp);
-        lcd.print(" B:");    
+        lcdprintPGM(" B:");    
         lcd.print(bedtempC_LCD);
-        lcd.print("/");
+        lcdprintPGM("/");
         lcd.print(bed_tardet_temp);
         
         state_cnt_LCD=1;
       break;
       case 1:
         lcd.setCursor(0,1);
-        lcd.print("                    ");
+        lcdprintPGM("                    ");
         lcd.setCursor(0,1);
         help_pos_calc = current_position[0];
-        lcd.print("X:");
+        lcdprintPGM("X:");
         lcd.print(help_pos_calc);
-        lcd.print(" ");
         help_pos_calc = current_position[1];
-        lcd.print("Y:");
+        lcdprintPGM(" Y:");
         lcd.print(help_pos_calc);
-        lcd.print(" ");
-        lcd.print("Z:");
+        lcdprintPGM(" Z:");
         lcd.print(current_position[2]);
 
         state_cnt_LCD=2;
@@ -119,29 +224,29 @@ void manage_display(void)
       case 2:
         state_cnt_LCD=3;
         lcd.setCursor(0,2);
-        lcd.print("                    ");
+        lcdprintPGM("                    ");
         lcd.setCursor(0,2);
         help_pos_calc = current_position[3];        
-        lcd.print("E:");
+        lcdprintPGM("E:");
         lcd.print(help_pos_calc);
-        lcd.print("mm ");
+        lcdprintPGM("mm ");
         
         if(sdmode == true)
         {
-          lcd.print("SD:");
+          lcdprintPGM("SD:");
           if(filesize > 0)
             help_float_calc = ((float)sdpos*100) / (float)filesize;
           else  
             help_float_calc = 0;
             
           lcd.print(help_float_calc);
-          lcd.print("%");  
+          lcdprintPGM("%");  
         }
         else
         {
            start_millis_SD_card = millis();
            #ifdef PIDTEMP
-             lcd.print(" PWM:");
+             lcdprintPGM(" PWM:");
              lcd.print((unsigned char)g_heater_pwm_val*1);
            #endif
         }
@@ -150,17 +255,17 @@ void manage_display(void)
       case 3:
         state_cnt_LCD=0;
         lcd.setCursor(0,3);
-        lcd.print("                    ");
+        lcdprintPGM("                    ");
         lcd.setCursor(0,3);
         if(sdmode == true)
         {
           help_time_calc = (millis() - start_millis_SD_card)/1000;
           lcd.print(help_time_calc/60);
-          lcd.print(":");  
+          lcdprintPGM(":");  
           if((help_time_calc%60 < 10))
-            lcd.print("0");  
+            lcdprintPGM("0");  
           lcd.print(help_time_calc%60);
-          lcd.print(" / ");  
+          lcdprintPGM(" / ");  
           if(filesize > 0)
           {
             help_float_calc = (float)sdpos / (float)filesize;
@@ -172,22 +277,22 @@ void manage_display(void)
               help_time_calc = 0;
           }
           lcd.print(help_time_calc/60);
-          lcd.print(":");  
+          lcdprintPGM(":");  
           if((help_time_calc%60 < 10))
-            lcd.print("0");  
+            lcdprintPGM("0");  
           lcd.print(help_time_calc%60);
           
-          lcd.print(" / ");
+          lcdprintPGM(" / ");
         }
         else
         {
           
-          lcd.print("FM/EM:");
+          lcdprintPGM("FM/EM:");
           lcd.print(feedmultiply);
-          lcd.print("/");
+          lcdprintPGM("/");
           lcd.print(extrudemultiply);
           
-          lcd.print(" P:");
+          lcdprintPGM(" P:");
         }
 
          
@@ -198,12 +303,7 @@ void manage_display(void)
         state_cnt_LCD=0;
       break;
       
-    }
-    
-    
-  }
-  
-  
+    } 
+ 
   
 }
-

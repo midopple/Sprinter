@@ -118,7 +118,8 @@
 
  Version 1.3.17T
 - M303 - PID relay autotune possible
-- G4 wait until last move is finished
+- G4 Wait until last move is done
+
 
 */
 
@@ -228,7 +229,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.17T / 30.04.2012"
+#define _VERSION_TEXT "1.3.18T / 02.06.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -402,7 +403,7 @@ unsigned char manage_monitor = 255;
   #ifdef SD_FAST_XFER_AKTIV
   
   #ifdef PIDTEMP
-    extern int g_heater_pwm_val;
+    extern volatile unsigned char g_heater_pwm_val;
   #endif
   
   void fast_xfer()
@@ -414,7 +415,9 @@ unsigned char manage_monitor = 255;
     if(HEATER_0_PIN > -1) WRITE(HEATER_0_PIN,LOW);
     if(HEATER_1_PIN > -1) WRITE(HEATER_1_PIN,LOW);
     
-    g_heater_pwm_val = 0;
+    #ifdef PIDTEMP
+      g_heater_pwm_val = 0;
+    #endif 
     
     lastxferchar = 1;
     xferbytes = 0;
@@ -2474,7 +2477,7 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   block->step_event_count = max(block->steps_x, max(block->steps_y, max(block->steps_z, block->steps_e)));
 
   // Bail if this is a zero-length block
-  if (block->step_event_count <=dropsegments) { return; };
+  if (block->step_event_count <=dropsegments) { /*Serial.println("drop seg");*/ return; };
 
   // Compute direction bits for this block 
   block->direction_bits = 0;
@@ -2551,7 +2554,7 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   //delta_mm[E_AXIS] = (target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS];
   delta_mm[E_AXIS] = ((target[E_AXIS]-position[E_AXIS])/axis_steps_per_unit[E_AXIS])*extrudemultiply/100.0;
   
-  if ( block->steps_x == 0 && block->steps_y == 0 && block->steps_z == 0 ) {
+  if ( block->steps_x <= dropsegments && block->steps_y <= dropsegments && block->steps_z <= dropsegments ) {
     block->millimeters = fabs(delta_mm[E_AXIS]);
   } else {
     block->millimeters = sqrt(square(delta_mm[X_AXIS]) + square(delta_mm[Y_AXIS]) + square(delta_mm[Z_AXIS]));
