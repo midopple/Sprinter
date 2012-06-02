@@ -33,6 +33,10 @@
   void controllerFan(void);
 #endif
 
+#ifdef EXTRUDERFAN_PIN
+  void extruderFan(void);
+#endif
+
 // Manage heater variables. For a thermistor or AD595 thermocouple, raw values refer to the 
 // reading from the analog pin. For a MAX6675 thermocouple, the raw value is the temperature in 0.25 
 // degree increments (i.e. 100=25 deg). 
@@ -192,7 +196,6 @@ int read_max6675()
 ISR(TIMER2_OVF_vect)
 {
   
-   //WRITE(30,HIGH);
   //--------------------------------------
   // Soft PWM, Heater, start PWM cycle
   //--------------------------------------
@@ -244,7 +247,6 @@ ISR(TIMER2_OVF_vect)
     }
   #endif
   
-  //WRITE(30,LOW);
 
 }
 #endif
@@ -254,7 +256,6 @@ ISR(TIMER2_OVF_vect)
  ISR(TIMER2_COMPA_vect)
  {
 
-   //WRITE(30,HIGH);
 
    if(g_heater_pwm_val > 253)
    {
@@ -271,7 +272,7 @@ ISR(TIMER2_OVF_vect)
      WRITE(HEATER_0_PIN,LOW);
    }
    
-   //WRITE(30,LOW);
+
  }
  #endif
  
@@ -279,7 +280,7 @@ ISR(TIMER2_OVF_vect)
  #if defined(FAN_SOFT_PWM) && (FAN_PIN > -1)
  ISR(TIMER2_COMPB_vect)
  {
-   //WRITE(30,HIGH);
+
    
    if(g_fan_pwm_val > 253)
    {
@@ -294,7 +295,6 @@ ISR(TIMER2_OVF_vect)
      #endif
    }  
 
-   //WRITE(30,LOW);
 
  }  
  #endif
@@ -663,12 +663,21 @@ void PID_autotune(int PIDAT_test_temp)
       heater_duty = constrain(heater_duty, 0, HEATER_CURRENT);
 
       #ifdef PID_SOFT_PWM
-        g_heater_pwm_val = (unsigned char)heater_duty;
+        if(target_raw != 0)
+          g_heater_pwm_val = (unsigned char)heater_duty;
+        else
+          g_heater_pwm_val = 0;
       #else
-        analogWrite(HEATER_0_PIN, heater_duty);
+        if(target_raw != 0)
+          analogWrite(HEATER_0_PIN, heater_duty);
+        else
+          analogWrite(HEATER_0_PIN, 0);
     
         #if LED_PIN>-1
-          analogWrite(LED_PIN, constrain(LED_PWM_FOR_BRIGHTNESS(heater_duty),0,255));
+          if(target_raw != 0)
+            analogWrite(LED_PIN, constrain(LED_PWM_FOR_BRIGHTNESS(heater_duty),0,255));
+          else
+            analogWrite(LED_PIN, 0);
         #endif
       #endif
   
@@ -683,10 +692,13 @@ void PID_autotune(int PIDAT_test_temp)
       }
       else 
       {
-        WRITE(HEATER_0_PIN,HIGH);
-        #if LED_PIN > -1
-            WRITE(LED_PIN,HIGH);
-        #endif
+        if(target_raw != 0)
+        {
+          WRITE(HEATER_0_PIN,HIGH);
+          #if LED_PIN > -1
+              WRITE(LED_PIN,HIGH);
+          #endif
+        }
       }
     #endif
   #endif
@@ -738,6 +750,10 @@ void PID_autotune(int PIDAT_test_temp)
     
 #ifdef CONTROLLERFAN_PIN
   controllerFan(); //Check if fan should be turned on to cool stepper drivers down
+#endif
+
+#ifdef EXTRUDERFAN_PIN
+  extruderFan(); //Check if fan should be turned on to cool extruder down
 #endif
 
 }
@@ -845,6 +861,27 @@ void controllerFan()
     else
     {
       WRITE(CONTROLLERFAN_PIN, HIGH); //... turn the fan on
+    }
+  }
+}
+#endif
+
+#ifdef EXTRUDERFAN_PIN
+unsigned long lastExtruderCheck = 0;
+
+void extruderFan()
+{
+  if ((millis() - lastExtruderCheck) >= 2500) //Not a time critical function, so we only check every 2500ms
+  {
+    lastExtruderCheck = millis();
+           
+    if (analog2temp(current_raw) < EXTRUDERFAN_DEC)
+    {
+      WRITE(EXTRUDERFAN_PIN, LOW); //... turn the fan off
+    }
+    else
+    {
+      WRITE(EXTRUDERFAN_PIN, HIGH); //... turn the fan on
     }
   }
 }

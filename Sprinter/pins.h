@@ -567,6 +567,11 @@
 * Gen6 pin assignment
 *
 ****************************************************************************************/
+#if MOTHERBOARD == 51
+  #define MOTHERBOARD 5
+  #define GEN6_DELUXE
+#endif
+
 #if MOTHERBOARD == 5
 #define KNOWN_BOARD 1
 
@@ -601,13 +606,18 @@
     #define E_ENABLE_PIN    3     //Added @ EJE Electronics 20100715
     #define TEMP_0_PIN      5     //changed @ rkoeppl 20110410
     #define HEATER_0_PIN    14    //changed @ rkoeppl 20110410
-    #define HEATER_1_PIN    -1    //changed @ rkoeppl 20110410
     
+    #ifdef GEN6_DELUXE
+      #define HEATER_1_PIN   1    
+      #define TEMP_1_PIN     0    
+    #else
+      #define HEATER_1_PIN   -1   
+      #define TEMP_1_PIN     -1    
+    #endif
     
     #define SDPOWER          -1
     #define SDSS          17
     #define LED_PIN         -1    //changed @ rkoeppl 20110410
-    #define TEMP_1_PIN      -1    //changed @ rkoeppl 20110410
     #define FAN_PIN         -1    //changed @ rkoeppl 20110410
     #define PS_ON_PIN       -1    //changed @ rkoeppl 20110410
     //our pin for debugging.
@@ -662,17 +672,20 @@
 #define HEATER_0_PIN       13 // (extruder)
 
 #ifdef SANGUINOLOLU_V_1_2
+
 #define HEATER_1_PIN       12 // (bed)
 #define X_ENABLE_PIN       14
 #define Y_ENABLE_PIN       14
 #define Z_ENABLE_PIN       26
 #define E_ENABLE_PIN       14
 #else
+
 #define HEATER_1_PIN       14  // (bed)
 #define X_ENABLE_PIN       -1
 #define Y_ENABLE_PIN       -1
 #define Z_ENABLE_PIN       -1
 #define E_ENABLE_PIN       -1
+
 #endif
 
 #define TEMP_0_PIN          7   // MUST USE ANALOG INPUT NUMBERING NOT DIGITAL OUTPUT NUMBERING!!!!!!!!! (pin 33 extruder)
@@ -682,11 +695,14 @@
 
 #endif
 
-
 /****************************************************************************************
 * Gen7 pin assignment
 *
-****************************************************************************************/
+****************************************************************************************
+* for Gen7 to work properly, you should reset your fuses to lfuse= 0xF7 ; hfuse = 0xD4 ; efuse = FD;
+* else you will always get a "brown out reset" loop resetting the firmware
+* you need a programmer to set the fuses
+**/
 #if MOTHERBOARD == 71    //GEN7 with 20 Mhz
 #define MOTHERBOARD 7
 #define QUARZ_20MHZ
@@ -702,28 +718,28 @@
 //x axis pins
     #define X_STEP_PIN      19
     #define X_DIR_PIN       18
-    #define X_ENABLE_PIN    -1
+    #define X_ENABLE_PIN    24
     #define X_MIN_PIN       7
-    #define X_MAX_PIN       6
+    #define X_MAX_PIN       -1      //X - Maxpin is 6
 
     //y axis pins
     #define Y_STEP_PIN      23
     #define Y_DIR_PIN       22
-    #define Y_ENABLE_PIN    -1
+    #define Y_ENABLE_PIN    24
     #define Y_MIN_PIN       5
-    #define Y_MAX_PIN       2
+    #define Y_MAX_PIN       -1      //Y - Maxpin is 2
 
     //z axis pins
     #define Z_STEP_PIN      26
     #define Z_DIR_PIN       25
     #define Z_ENABLE_PIN    24
     #define Z_MIN_PIN       1
-    #define Z_MAX_PIN       0
+    #define Z_MAX_PIN       -1      //Z - Maxpin is 0
 
     //extruder pins
     #define E_STEP_PIN      28     
     #define E_DIR_PIN       27     
-    #define E_ENABLE_PIN    -1     
+    #define E_ENABLE_PIN    24     
     #define TEMP_0_PIN      1    // Extruder 
     #define HEATER_0_PIN     4    // Extruder
     #define HEATER_1_PIN     3    // Bed
@@ -747,39 +763,37 @@
 #define KNOWN_BOARD 1
 
 
-#define X_STEP_PIN          0  
-#define X_DIR_PIN           1  
-#define X_ENABLE_PIN       39 
-#define X_MIN_PIN          13 
+#define X_STEP_PIN         28
+#define X_DIR_PIN          29
+#define X_ENABLE_PIN       19
+#define X_MIN_PIN          25
 #define X_MAX_PIN          -1    
 
-#define Y_STEP_PIN          2  
-#define Y_DIR_PIN           3 
-#define Y_ENABLE_PIN       38 
-#define Y_MIN_PIN          14 
+#define Y_STEP_PIN         30
+#define Y_DIR_PIN          31
+#define Y_ENABLE_PIN       26
+#define Y_MIN_PIN           20
 #define Y_MAX_PIN          -1    
 
-#define Z_STEP_PIN          4
-#define Z_DIR_PIN           5 
-#define Z_ENABLE_PIN       23 
-#define Z_MIN_PIN          15 
+#define Z_STEP_PIN         32
+#define Z_DIR_PIN          33
+#define Z_ENABLE_PIN       17
+#define Z_MIN_PIN          27
 #define Z_MAX_PIN          -1    
 
-#define E_STEP_PIN          6  
-#define E_DIR_PIN           7 
-#define E_ENABLE_PIN       19 
+#define E_STEP_PIN         34
+#define E_DIR_PIN          35
+#define E_ENABLE_PIN       13
 
-
-
-#define HEATER_0_PIN       21  // Extruder
-#define HEATER_1_PIN       20  // Bed
-#define FAN_PIN            22  // Fan   
+#define HEATER_0_PIN       15  // Extruder
+#define HEATER_1_PIN       14  // Bed
+#define FAN_PIN            16  // Fan   
 
 #define TEMP_0_PIN          7  // Extruder
 #define TEMP_1_PIN          6  // Bed
 
 #define SDPOWER            -1
-#define SDSS                8
+#define SDSS                20
 #define LED_PIN            -1
 #define PS_ON_PIN          -1
 #define KILL_PIN           -1 
@@ -787,9 +801,9 @@
 
 #ifndef SDSUPPORT
 // these pins are defined in the SD library if building with SD support  
-  #define SCK_PIN           9 
-  #define MISO_PIN         11 
-  #define MOSI_PIN         10 
+  #define SCK_PIN          21
+  #define MISO_PIN         22 
+  #define MOSI_PIN         23 
 #endif
 
 #endif
@@ -804,48 +818,46 @@
 #define KNOWN_BOARD 1
 
 
-#define X_STEP_PIN 0
-#define X_DIR_PIN 1
-#define X_ENABLE_PIN 39
-#define X_MIN_PIN 35
-#define X_MAX_PIN -1
+#define X_STEP_PIN         28
+#define X_DIR_PIN          29
+#define X_ENABLE_PIN       19
+#define X_MIN_PIN          47
+#define X_MAX_PIN          -1
 
-#define Y_STEP_PIN 2
-#define Y_DIR_PIN 3
-#define Y_ENABLE_PIN 38
-#define Y_MIN_PIN 8
-#define Y_MAX_PIN -1
+#define Y_STEP_PIN         30
+#define Y_DIR_PIN          31
+#define Y_ENABLE_PIN       18
+#define Y_MIN_PIN           20
+#define Y_MAX_PIN          -1
 
-#define Z_STEP_PIN 4
-#define Z_DIR_PIN 5
-#define Z_ENABLE_PIN 23
-#define Z_MIN_PIN 36
-#define Z_MAX_PIN -1
+#define Z_STEP_PIN         32
+#define Z_DIR_PIN          33
+#define Z_ENABLE_PIN       17
+#define Z_MIN_PIN          36
+#define Z_MAX_PIN          -1
 
-#define E_STEP_PIN 6
-#define E_DIR_PIN 7
-#define E_ENABLE_PIN 19
+#define E_STEP_PIN         34
+#define E_DIR_PIN          35
+#define E_ENABLE_PIN       13
 
+#define HEATER_0_PIN       15  // Extruder
+#define HEATER_1_PIN       14  // Bed
+#define FAN_PIN            16  // Fan
 
+#define TEMP_0_PIN          1  // Extruder
+#define TEMP_1_PIN          0  // Bed
 
-#define HEATER_0_PIN 21 // Extruder
-#define HEATER_1_PIN 20 // Bed
-#define FAN_PIN 22 // Fan
-
-#define TEMP_0_PIN 1 // Extruder
-#define TEMP_1_PIN 0 // Bed
-
-#define SDPOWER -1
-#define SDSS 26
-#define LED_PIN -1
-#define PS_ON_PIN -1
-#define KILL_PIN -1
+#define SDPOWER            -1
+#define SDSS                2
+#define LED_PIN            -1
+#define PS_ON_PIN          -1
+#define KILL_PIN           -1
 
 #ifndef SDSUPPORT
 // these pins are defined in the SD library if building with SD support
-#define SCK_PIN 9
-#define MISO_PIN 11
-#define MOSI_PIN 10
+  #define SCK_PIN          21
+  #define MISO_PIN         22
+  #define MOSI_PIN         23
 #endif
 
 #endif

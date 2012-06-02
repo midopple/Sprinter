@@ -7,6 +7,7 @@
 // MEGA/RAMPS up to 1.2  = 3,
 // RAMPS 1.3/1.4 = 33
 // Gen6 = 5, 
+// Gen6 deluxe = 51
 // Sanguinololu up to 1.1 = 6
 // Sanguinololu 1.2 and above = 62
 // Gen 7 @ 16MHZ only= 7
@@ -152,10 +153,10 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 
 #define MAX_STEP_FREQUENCY 30000 // Max step frequency
 
-//For the retract (negative Extruder) move this Feedrate is used
-//The next positive Extruder move use also this feedrate, 
-//then for the next (second after retract) move the original Feedrate is used
-#define MAX_RETRACT_FEEDRATE 45    //mm/sec
+//For the retract (negative Extruder) move this maxiumum Limit of Feedrate is used
+//The next positive Extruder move use also this Limit, 
+//then for the next (second after retract) move the original Maximum (_MAX_FEEDRATE) Limit is used
+#define MAX_RETRACT_FEEDRATE 100    //mm/sec
 
 //-----------------------------------------------------------------------
 //// Not used at the Moment
@@ -361,6 +362,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //#define CONTROLLERFAN_PIN 23 //Pin used for the fan to cool controller, comment out to disable this function
 #define CONTROLLERFAN_SEC 60 //How many seconds, after all motors were disabled, the fan should run
 
+//This is for controlling a fan that will keep the extruder cool.
+//#define EXTRUDERFAN_PIN 66 //Pin used to control the fan, comment out to disable this function
+#define EXTRUDERFAN_DEC 50 //Hotend temperature from where the fan will be turned on
 
 //-----------------------------------------------------------------------
 // DEBUGING

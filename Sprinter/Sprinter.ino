@@ -79,7 +79,7 @@
    
  - Same fix for SD Card, testet and work
 
- Version 1.3.09T  
+ Version 1.3.09T
  - Move SLOWDOWN Function up
  
  Version 1.3.10T
@@ -2516,12 +2516,12 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
     enable_y();
     delayMicroseconds(DELAY_ENABLE);
   }
-  if(if(block->steps_z != 0))
+  if(block->steps_z != 0)
   {
     enable_z();
     delayMicroseconds(DELAY_ENABLE);
   }
-  if(if(block->steps_e != 0))
+  if(block->steps_e != 0)
   {
     enable_e();
     delayMicroseconds(DELAY_ENABLE);
@@ -3025,8 +3025,6 @@ FORCE_INLINE void trapezoid_generator_reset()
 // It pops blocks from the block_buffer and executes them by pulsing the stepper pins appropriately. 
 ISR(TIMER1_COMPA_vect)
 {        
-
-  WRITE(30,HIGH);
   // If there is no current block, attempt to pop one from the buffer
   if (current_block == NULL) {
     // Anything in the buffer?
@@ -3338,8 +3336,6 @@ ISR(TIMER1_COMPA_vect)
       plan_discard_current_block();
     }   
   } 
-
-  WRITE(30,LOW);
 }
 
 #ifdef ADVANCE
@@ -3383,7 +3379,7 @@ void st_init()
   // output mode = 00 (disconnected)
   TCCR1A &= ~(3<<COM1A0); 
   TCCR1A &= ~(3<<COM1B0); 
-  
+
   // Set the timer pre-scaler
   // Generally we use a divider of 8, resulting in a 2MHz timer
   // frequency on a 16MHz MCU. If you are going to change this, be
