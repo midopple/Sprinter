@@ -1,4 +1,4 @@
-The leading developers of Sprinter are currently Kliment and caru, though many others contribute with their patches.
+The leading developers of Sprinter are currently Kliment, caru and midopple, though many others contribute with their patches.
 
 This is a firmware for RAMPS and other reprap single-processor electronics setups. It supports printing from SD card, active heatbed control, and ATmega internal pullups.
 
@@ -40,17 +40,17 @@ Software installation
 1. Install the required packages (gcc-avr, avr-libc, etc.)
   sudo apt-get install arduino-core
 
-2. Get the arduino software version 0018 (0023 works for RAMPS), uncompress it in a directory
-Arduino software v1 DOES NOT work with Sprinter yet!
+2. Get the arduino software version 0023, uncompress it in a directory.
+Arduino software v1 has not been tested much, but is known to work with some boards.
    http://www.arduino.cc/en/Main/Software
 
-3. Get the sanguino software, version 0018
+3. Get the sanguino software, version 0023
    http://sanguino.cc/softwareforlinux
 
 follow the sanguino's readme so that your arduino hardware folder looks like 
-  arduino-0018/hardware/arduino
-  arduino-0018/hardware/sanguino
-  arduino-0018/hardware/tools
+  arduino-0023/hardware/arduino
+  arduino-0023/hardware/sanguino
+  arduino-0023/hardware/tools
 
 4. Clone the Sprinter git repository. 
    git clone https://github.com/kliment/Sprinter.git
@@ -64,12 +64,12 @@ Firmware compilation and upload
 5. Edit INSTALL_DIR inside Sprinter/Makefile (do not mind the default reference to arduino 0022)
 
 6. Run make. If everything goes well Sprinter/applet/Sprinter.cpp should have been created.
-You can safely ignore the error message mentioning arduino-0018/hardware/arduino/cores/arduino/WString.o
+You can safely ignore the error message mentioning arduino-0023/hardware/arduino/cores/arduino/WString.o
 
 7. Connect your Sanguinololu to your computer
    http://reprap.org/wiki/Sanguinololu
 
-8. Launch arduino-0018/arduino, open Sprinter/Sprinter.pde
+8. Launch arduino-0023/arduino, open Sprinter/Sprinter.pde
 
 9. Go to Tools -> Serial Port, and select the relevant option
 
@@ -94,6 +94,10 @@ also for the mentioned hardware setup
 
 13. Click on "the arrow going to the right" button to upload (you had done steps 7,8,9 before, right ?). 
 If everything goes well you should see the message "Done uploading".
+
+if GEN7 with 20 Mhz is in use set the Fuses for Bootloader to
+lfuse= 0xF7 hfuse = 0xD4 efuse = FD
+Brownout must be 2,7 V
 
 Congratulations, you have just upgraded the firmware of your RepRap !
 
