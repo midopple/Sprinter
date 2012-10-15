@@ -127,7 +127,22 @@
 - Extra Parameter for Max Extruder Jerk
 - New Parameter (max_e_jerk) in EEPROM --> Default settings after update !
 
+ Version 1.3.20T
+- fix a few typos and correct english usage
+- reimplement homing routine as an inline function
+- refactor eeprom routines to make it possible to modify the value of a single parameter
+- calculate eeprom parameter addresses based on previous param address plus sizeof(type)
+- add 0 C point in Thermistortable 7
 
+ Version 1.3.21T
+- M301 set PID Parameter, and Store to EEPROM
+- If no PID is used, deaktivate Variables for PID settings
+
+ Version 1.3.22T
+- Error in JERK calculation after G92 command is send, make problems 
+  with Z-Lift function in Slic3r
+- Add homing values can shown with M206 D
+- M303 Autotune use HEATER_CURRENT val for Maximum PWM Value 
 
 */
 
@@ -224,6 +239,7 @@ void __cxa_pure_virtual(){};
 // M220 - set speed factor override percentage S=factor in percent 
 // M221 - set extruder multiply factor S100 --> original Extrude Speed 
 
+// M301 - Set PID parameters P I and D
 // M303 - PID relay autotune S<temperature> sets the target temperature. (default target temperature = 150C)
 
 // M400 - Finish all moves
@@ -239,7 +255,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.19T / 11.06.2012"
+#define _VERSION_TEXT "1.3.22T / 20.08.2012"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -255,7 +271,9 @@ float max_xy_jerk = _MAX_XY_JERK;
 float max_z_jerk = _MAX_Z_JERK;
 float max_e_jerk = _MAX_E_JERK;
 unsigned long min_seg_time = _MIN_SEG_TIME;
-unsigned int Kp = PID_PGAIN, Ki = PID_IGAIN, Kd = PID_DGAIN;
+#ifdef PIDTEMP
+ unsigned int PID_Kp = PID_PGAIN, PID_Ki = PID_IGAIN, PID_Kd = PID_DGAIN;
+#endif
 
 long  max_acceleration_units_per_sq_second[4] = _MAX_ACCELERATION_UNITS_PER_SQ_SECOND; // X, Y, Z and E max acceleration in mm/s^2 for printing moves or retracts
 
@@ -856,6 +874,10 @@ void setup()
   //second value --> Print settings to UART
   EEPROM_RetrieveSettings(false,false);
   #endif
+  
+  #ifdef PIDTEMP
+  updatePID();
+  #endif
 
   //Free Ram
   showString(PSTR("Free Ram: "));
@@ -1429,11 +1451,14 @@ FORCE_INLINE void process_commands()
       case 42: //M42 -Change pin status via gcode
         if (code_seen('S'))
         {
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
           int pin_status = code_value();
           if (code_seen('P') && pin_status >= 0 && pin_status <= 255)
           {
             int pin_number = code_value();
-            for(int i = 0; i < sizeof(sensitive_pins); i++)
+            for(int i = 0; i < sizeof(sensitive_pins) / sizeof(int); i++)
             {
               if (sensitive_pins[i] == pin_number)
               {
@@ -1452,6 +1477,9 @@ FORCE_INLINE void process_commands()
         }
         break;
       case 104: // M104
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
         if (code_seen('S')) target_raw = temp2analogh(target_temp = code_value());
         #ifdef WATCHPERIOD
             if(target_raw > current_raw)
@@ -1466,6 +1494,9 @@ FORCE_INLINE void process_commands()
         #endif
         break;
       case 140: // M140 set bed temp
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
         #if TEMP_1_PIN > -1 || defined BED_USES_AD595
             if (code_seen('S')) target_bed_raw = temp2analogBed(code_value());
         #endif
@@ -1508,6 +1539,9 @@ FORCE_INLINE void process_commands()
         return;
         //break;
       case 109: { // M109 - Wait for extruder heater to reach target.
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
         if (code_seen('S')) target_raw = temp2analogh(target_temp = code_value());
         #ifdef WATCHPERIOD
             if(target_raw>current_raw)
@@ -1559,6 +1593,9 @@ FORCE_INLINE void process_commands()
       }
       break;
       case 190: // M190 - Wait for bed heater to reach target temperature.
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
       #if TEMP_1_PIN > -1
         if (code_seen('S')) target_bed_raw = temp2analogBed(code_value());
         codenum = millis(); 
@@ -1583,6 +1620,9 @@ FORCE_INLINE void process_commands()
       break;
       #if FAN_PIN > -1
       case 106: //M106 Fan On
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
         if (code_seen('S'))
         {
             unsigned char l_fan_code_val = constrain(code_value(),0,255);
@@ -1637,6 +1677,9 @@ FORCE_INLINE void process_commands()
         SET_OUTPUT(PS_ON_PIN); //GND
         break;
       case 81: // M81 - ATX Power Off
+#ifdef CHAIN_OF_COMMAND
+          st_synchronize(); // wait for all movements to finish
+#endif
         SET_INPUT(PS_ON_PIN); //Floating
         break;
       #endif
@@ -1651,6 +1694,13 @@ FORCE_INLINE void process_commands()
         if(code_seen('S'))
         {
           stepper_inactive_time = code_value() * 1000; 
+        }
+        else if(code_seen('T'))
+        {
+          enable_x(); 
+          enable_y(); 
+          enable_z(); 
+          enable_e(); 
         }
         else
         { 
@@ -1782,6 +1832,13 @@ FORCE_INLINE void process_commands()
         if(code_seen('E')) max_e_jerk = code_value() ;
       break;
       case 206: // M206 additional homing offset
+        if(code_seen('D'))
+        {
+          showString(PSTR("Addhome X:")); Serial.print(add_homing[0]);
+          showString(PSTR(" Y:")); Serial.print(add_homing[1]);
+          showString(PSTR(" Z:")); Serial.println(add_homing[2]);
+        }
+
         for(int8_t cnt_i=0; cnt_i < 3; cnt_i++) 
         {
           if(code_seen(axis_codes[cnt_i])) add_homing[cnt_i] = code_value();
@@ -1806,6 +1863,16 @@ FORCE_INLINE void process_commands()
         }
       }
       break;
+#ifdef PIDTEMP
+      case 301: // M301
+      {
+        if(code_seen('P')) PID_Kp = code_value();
+        if(code_seen('I')) PID_Ki = code_value();
+        if(code_seen('D')) PID_Kd = code_value();
+        updatePID();
+      }
+      break;
+#endif //PIDTEMP      
 #ifdef PID_AUTOTUNE
       case 303: // M303 PID autotune
       {
@@ -2139,6 +2206,7 @@ static int8_t prev_block_index(int8_t block_index) {
 static long position[4];   
 static float previous_speed[4]; // Speed of previous path line segment
 static float previous_nominal_speed; // Nominal speed of previous path line segment
+static unsigned char G92_reset_previous_speed = 0;
 
 
 // Calculates the distance (not time) it takes to accelerate from initial_rate to target_rate using the 
@@ -2686,10 +2754,19 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
   // Start with a safe speed
   float vmax_junction = max_xy_jerk/2; 
   float vmax_junction_factor = 1.0; 
+
   if(fabs(current_speed[Z_AXIS]) > max_z_jerk/2) 
     vmax_junction = min(vmax_junction, max_z_jerk/2);
+
   if(fabs(current_speed[E_AXIS]) > max_e_jerk/2) 
     vmax_junction = min(vmax_junction, max_e_jerk/2);
+
+  if(G92_reset_previous_speed == 1)
+  {
+    vmax_junction = 0.1;
+    G92_reset_previous_speed = 0;  
+  }
+
   vmax_junction = min(vmax_junction, block->nominal_speed);
   float safe_speed = vmax_junction;
 
@@ -2709,8 +2786,9 @@ void plan_buffer_line(float x, float y, float z, float e, float feed_rate)
     } 
     vmax_junction = min(previous_nominal_speed, vmax_junction * vmax_junction_factor); // Limit speed to max previous speed
   }
-  block->max_entry_speed = vmax_junction;
-
+  
+    block->max_entry_speed = vmax_junction;
+    
   // Initialize block entry speed. Compute based on deceleration to user-defined MINIMUM_PLANNER_SPEED.
   double v_allowable = max_allowable_speed(-block->acceleration,MINIMUM_PLANNER_SPEED,block->millimeters);
   block->entry_speed = min(vmax_junction, v_allowable);
@@ -2795,6 +2873,8 @@ void plan_set_position(float x, float y, float z, float e)
   previous_speed[1] = 0.0;
   previous_speed[2] = 0.0;
   previous_speed[3] = 0.0;
+  
+  G92_reset_previous_speed = 1;
 }
 
 #ifdef AUTOTEMP

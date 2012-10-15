@@ -67,8 +67,8 @@ unsigned long previous_millis_heater, previous_millis_bed_heater, previous_milli
       //int output;
   int error;
   int heater_duty = 0;
-  const int temp_iState_min = 256L * -PID_INTEGRAL_DRIVE_MAX / PID_IGAIN;
-  const int temp_iState_max = 256L * PID_INTEGRAL_DRIVE_MAX / PID_IGAIN;
+  int temp_iState_min = 256L * -PID_INTEGRAL_DRIVE_MAX / PID_IGAIN;
+  int temp_iState_max = 256L * PID_INTEGRAL_DRIVE_MAX / PID_IGAIN;
 #endif
 
 
@@ -306,6 +306,9 @@ ISR(TIMER2_OVF_vect)
 // Some information see:
 // http://brettbeauregard.com/blog/2012/01/arduino-pid-autotune-library/
 //------------------------------------------------------------------
+
+//HEATER_CURRENT --> 255
+
 #ifdef PID_AUTOTUNE
 void PID_autotune(int PIDAT_test_temp)
 {
@@ -315,7 +318,7 @@ void PID_autotune(int PIDAT_test_temp)
 
   float PIDAT_max, PIDAT_min;
  
-  unsigned char PIDAT_PWM_val = 255;
+  unsigned char PIDAT_PWM_val = HEATER_CURRENT;
   
   unsigned char PIDAT_cycles=0;
   bool PIDAT_heating = true;
@@ -330,8 +333,8 @@ void PID_autotune(int PIDAT_test_temp)
   long PIDAT_t_high;
   long PIDAT_t_low;
 
-  long PIDAT_bias= 127;
-  long PIDAT_d  =  127;
+  long PIDAT_bias= HEATER_CURRENT/2;
+  long PIDAT_d  =  HEATER_CURRENT/2;
   
   float PIDAT_Ku, PIDAT_Tu;
   float PIDAT_Kp, PIDAT_Ki, PIDAT_Kd;
@@ -405,8 +408,8 @@ void PID_autotune(int PIDAT_test_temp)
           if(PIDAT_cycles > 0) 
           {
             PIDAT_bias += (PIDAT_d*(PIDAT_t_high - PIDAT_t_low))/(PIDAT_t_low + PIDAT_t_high);
-            PIDAT_bias = constrain(PIDAT_bias, 20 ,235);
-            if(PIDAT_bias > 127) PIDAT_d = 254 - PIDAT_bias;
+            PIDAT_bias = constrain(PIDAT_bias, 20 ,HEATER_CURRENT - 20);
+            if(PIDAT_bias > (HEATER_CURRENT/2)) PIDAT_d = (HEATER_CURRENT - 1) - PIDAT_bias;
             else PIDAT_d = PIDAT_bias;
 
             showString(PSTR(" bias: ")); Serial.print(PIDAT_bias);
@@ -467,9 +470,10 @@ void PID_autotune(int PIDAT_test_temp)
       #endif  
     }
     
-    if(PIDAT_input > (PIDAT_test_temp + 20)) 
+    if((PIDAT_input > (PIDAT_test_temp + 55)) || (PIDAT_input > 255))
     {
       showString(PSTR("PID Autotune failed! Temperature to high\r\n"));
+      target_temp = 0;
       return;
     }
     
@@ -498,6 +502,14 @@ void PID_autotune(int PIDAT_test_temp)
 }
 #endif  
 //---------------- END AUTOTUNE PID ------------------------------
+
+ void updatePID()
+ {
+   #ifdef PIDTEMP
+    temp_iState_min = (256L * -PID_INTEGRAL_DRIVE_MAX) / PID_Ki;
+    temp_iState_max = (256L * PID_INTEGRAL_DRIVE_MAX) / PID_Ki;
+   #endif
+ }
  
  void manage_heater()
  {
@@ -630,7 +642,7 @@ void PID_autotune(int PIDAT_test_temp)
         #endif
     }
   #endif
-
+  
   #if (TEMP_0_PIN > -1) || defined (HEATER_USES_MAX6675) || defined (HEATER_USES_AD595)
     #ifdef PIDTEMP
       
@@ -639,7 +651,7 @@ void PID_autotune(int PIDAT_test_temp)
       int delta_temp = current_temp - prev_temp;
       
       prev_temp = current_temp;
-      pTerm = ((long)PID_PGAIN * error) / 256;
+      pTerm = ((long)PID_Kp * error) / 256;
       const int H0 = min(HEATER_DUTY_FOR_SETPOINT(target_temp),HEATER_CURRENT);
       heater_duty = H0 + pTerm;
       
@@ -647,7 +659,7 @@ void PID_autotune(int PIDAT_test_temp)
       {
         temp_iState += error;
         temp_iState = constrain(temp_iState, temp_iState_min, temp_iState_max);
-        iTerm = ((long)PID_IGAIN * temp_iState) / 256;
+        iTerm = ((long)PID_Ki * temp_iState) / 256;
         heater_duty += iTerm;
       }
       
@@ -658,7 +670,7 @@ void PID_autotune(int PIDAT_test_temp)
       if(prev_error >  9){ prev_error /=  9; log3 += 2; }
       if(prev_error >  3){ prev_error /=  3; log3 ++;   }
       
-      dTerm = ((long)PID_DGAIN * delta_temp) / (256*log3);
+      dTerm = ((long)PID_Kd * delta_temp) / (256*log3);
       heater_duty += dTerm;
       heater_duty = constrain(heater_duty, 0, HEATER_CURRENT);
 
