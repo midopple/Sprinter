@@ -96,6 +96,36 @@
 *       PWM (D 14) PD6 20|        |21  PD7 (D 15) PWM
 *                        +--------+
 *
+****************************************************************************************
+*
+*                     ATMega644P (SMD)
+*
+*                        +--------+
+*       MOSI (D 5) PB5  1| O      |44  PB4 (D 4)  PWM  
+*       MISO (D 6) PB6  2|        |43  PB3 (D 3)  PWM  
+*       SCK  (D 7) PB7  3|        |42  PB2 (D 2)  INT2   
+*                  RST  4|        |41  PB1 (D 1)
+*                  Vcc  5|        |40  PB0 (D 0)  
+*                  GND  6|        |39  GND
+*                XTAL2  7|        |38  Vcc
+*                XTAL1  8|        |37  PA0 (AI 0 / D31)
+*       RX0 (D 8)  PD0  9|        |36  PA1 (AI 1 / D30)
+*       TX0 (D 9)  PD1 10|        |35  PA2 (AI 2 / D29)
+*  INT0 RX1 (D 10) PD2 11|        |34  PA3 (AI 3 / D28)
+*                        +        +
+*  INT1 TX1 (D 11) PD3 12|        |33  PA4 (AI 4 / D27)
+*       PWM (D 12) PD4 13|        |32  PA5 (AI 5 / D26)
+*       PWM (D 13) PD5 14|        |31  PA6 (AI 6 / D25)
+*       PWM (D 14) PD6 15|        |30  PA7 (AI 7 / D24)
+*       PWM (D 15) PD7 16|        |29  AREF
+*                  Vcc 17|        |28  GND
+*                  GND 18|        |27  AVCC
+*           (D 16) PC0 19|        |26  PC7 (D 23)      
+*           (D 17) PC1 20|        |25  PC6 (D 22)      
+*           (D 18) PC2 21|        |24  PC5 (D 21) TDI  
+*           (D 19) PC3 22|        |23  PC4 (D 20) TDO  
+*                        +--------+
+*
 ****************************************************************************************/
 #if MOTHERBOARD == 1
 #define KNOWN_BOARD 1
@@ -151,7 +181,7 @@
 #if MOTHERBOARD == 2
 #define KNOWN_BOARD 1
 
-#if !defined(__AVR_ATmega644P__) && !defined(__AVR_ATmega1284P__) 
+#if !defined(__AVR_ATmega644P__) && !defined(__AVR_ATmega1284P__) && !defined(__ATmega644P__) && !defined(__ATmega1284P__)  
 #error Oops!  Make sure you have 'Sanguino' selected from the 'Tools -> Boards' menu.
 #endif
 
@@ -568,6 +598,11 @@
 * Gen6 pin assignment
 *
 ****************************************************************************************/
+#if MOTHERBOARD == 51
+  #define MOTHERBOARD 5
+  #define GEN6_DELUXE
+#endif
+
 #if MOTHERBOARD == 5
 #define KNOWN_BOARD 1
 
@@ -602,13 +637,18 @@
     #define E_ENABLE_PIN    3     //Added @ EJE Electronics 20100715
     #define TEMP_0_PIN      5     //changed @ rkoeppl 20110410
     #define HEATER_0_PIN    14    //changed @ rkoeppl 20110410
-    #define HEATER_1_PIN    -1    //changed @ rkoeppl 20110410
     
+    #ifdef GEN6_DELUXE
+      #define HEATER_1_PIN   1    
+      #define TEMP_1_PIN     0    
+    #else
+      #define HEATER_1_PIN   -1   
+      #define TEMP_1_PIN     -1    
+    #endif
     
     #define SDPOWER          -1
     #define SDSS          17
     #define LED_PIN         -1    //changed @ rkoeppl 20110410
-    #define TEMP_1_PIN      -1    //changed @ rkoeppl 20110410
     #define FAN_PIN         -1    //changed @ rkoeppl 20110410
     #define PS_ON_PIN       -1    //changed @ rkoeppl 20110410
     //our pin for debugging.
