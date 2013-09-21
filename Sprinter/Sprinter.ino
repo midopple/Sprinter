@@ -144,6 +144,15 @@
 - Add homing values can shown with M206 D
 - M303 Autotune use HEATER_CURRENT val for Maximum PWM Value 
 
+ Version 1.3.23T
+- Change max overshoot for Autotune to 55°C
+- Analog pins was added with the wrong pin number, needs to be offset +55 to protect against using the pin as a digital
+- Min step delay in microseconds (EXTEND_STEP_PULSE_USEC)
+
+ Version 1.3.24T / 21.09.2013
+- M105 show same format as Marlin / send targettemp 
+. 
+
 */
 
 #include <avr/pgmspace.h>
@@ -255,7 +264,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.22T / 20.08.2012"
+#define _VERSION_TEXT "1.3.24T / 21.09.2013"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -1501,7 +1510,8 @@ FORCE_INLINE void process_commands()
             if (code_seen('S')) target_bed_raw = temp2analogBed(code_value());
         #endif
         break;
-      case 105: // M105
+        
+      case 105: // M105  ok T:21.2 /50.0 B:22.2 /50.0 @:127 B@:0
         #if (TEMP_0_PIN > -1) || defined (HEATER_USES_MAX6675)|| defined HEATER_USES_AD595
           hotendtC = analog2temp(current_raw);
         #endif
@@ -1511,6 +1521,18 @@ FORCE_INLINE void process_commands()
         #if (TEMP_0_PIN > -1) || defined (HEATER_USES_MAX6675) || defined HEATER_USES_AD595
             showString(PSTR("ok T:"));
             Serial.print(hotendtC); 
+            showString(PSTR(" /"));
+            Serial.print(analog2temp(target_raw)); 
+            
+          #if TEMP_1_PIN > -1 || defined BED_USES_AD595
+            showString(PSTR(" B:"));
+            Serial.print(bedtempC); 
+            showString(PSTR(" /"));
+            Serial.print(analog2temp(target_bed_raw)); 
+          #else
+            Serial.print(PSTR(" B:0 /0"));
+          #endif  
+            
           #ifdef PIDTEMP
             showString(PSTR(" @:"));
             Serial.print(heater_duty); 
@@ -1526,13 +1548,27 @@ FORCE_INLINE void process_commands()
               showString(PSTR(",AU:"));
               Serial.print(autotemp_setpoint);
             #endif
-          #endif
-          #if TEMP_1_PIN > -1 || defined BED_USES_AD595
-            showString(PSTR(" B:"));
-            Serial.println(bedtempC); 
           #else
-            Serial.println();
+             showString(PSTR(" @:0"));
+             #if (HEATER_0_PIN > -1)
+               if(READ(HEATER_0_PIN))
+                 Serial.println(255);
+               else
+                 Serial.println(0);
+             #else
+               Serial.println(0);
+             #endif
           #endif
+          
+          showString(PSTR(" B@:"));
+          #if (HEATER_1_PIN > -1)
+            if(READ(HEATER_1_PIN))
+              Serial.println(255);
+            else
+              Serial.println(0);
+          #else
+            Serial.println(0);
+          #endif  
         #else
           #error No temperature source available
         #endif
@@ -1572,7 +1608,20 @@ FORCE_INLINE void process_commands()
           if( (millis() - codenum) > 1000 ) //Print Temp Reading every 1 second while heating up/cooling down
           {
             showString(PSTR("T:"));
+          #ifndef TEMP_RESIDENCY_TIME
             Serial.println( analog2temp(current_raw) );
+          #else
+            Serial.print( analog2temp(current_raw) );
+            
+            showString(PSTR(" / W:"));
+            if(residencyStart > -1)
+              Serial.print( (millis() - residencyStart)/1000 );
+            else
+              Serial.print( PSTR("0") );
+              
+            showString(PSTR(" / D:"));
+            Serial.println( labs(analog2temp(current_raw) - analog2temp(target_raw)) );
+          #endif
             codenum = millis();
           }
           manage_heater();
@@ -3327,7 +3376,7 @@ ISR(TIMER1_COMPA_vect)
           virtual_steps_x++;
           
         counter_x -= current_block->step_event_count;
-        WRITE(X_STEP_PIN, LOW);
+        //WRITE(X_STEP_PIN, LOW);
       }
 
       counter_y += current_block->steps_y;
@@ -3343,7 +3392,7 @@ ISR(TIMER1_COMPA_vect)
           virtual_steps_y++;
             
         counter_y -= current_block->step_event_count;
-        WRITE(Y_STEP_PIN, LOW);
+        //WRITE(Y_STEP_PIN, LOW);
       }
 
       counter_z += current_block->steps_z;
@@ -3359,7 +3408,7 @@ ISR(TIMER1_COMPA_vect)
           virtual_steps_z++;
           
         counter_z -= current_block->step_event_count;
-        WRITE(Z_STEP_PIN, LOW);
+        //WRITE(Z_STEP_PIN, LOW);
       }
 
       #ifndef ADVANCE
@@ -3367,11 +3416,23 @@ ISR(TIMER1_COMPA_vect)
         if (counter_e > 0) {
           WRITE(E_STEP_PIN, HIGH);
           counter_e -= current_block->step_event_count;
-          WRITE(E_STEP_PIN, LOW);
+          //WRITE(E_STEP_PIN, LOW);
         }
       #endif //!ADVANCE
 
       step_events_completed += 1;  
+      
+      #if (EXTEND_STEP_PULSE_USEC > 0)
+        delayMicroseconds(EXTEND_STEP_PULSE_USEC);
+      #endif 
+   
+      WRITE(X_STEP_PIN, LOW);
+      WRITE(Y_STEP_PIN, LOW);
+      WRITE(Z_STEP_PIN, LOW);
+      #ifndef ADVANCE
+        WRITE(E_STEP_PIN, LOW);  
+      #endif
+
       if(step_events_completed >= current_block->step_event_count) break;
       
     }

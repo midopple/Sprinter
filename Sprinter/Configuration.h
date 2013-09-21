@@ -153,18 +153,21 @@ const int NUM_AXIS = 4; // The axis order in all axis related arrays is X, Y, Z,
 
 #define MAX_STEP_FREQUENCY 30000 // Max step frequency
 
-//For the retract (negative Extruder) move this maxiumum Limit of Feedrate is used
-//The next positive Extruder move use also this Limit, 
-//then for the next (second after retract) move the original Maximum (_MAX_FEEDRATE) Limit is used
-#define MAX_RETRACT_FEEDRATE 100    //mm/sec
+//For the retract (negative Extruder) move this Feedrate is used
+//The next positive Extruder move use also this feedrate, 
+//then for the next (second after retract) move the original Feedrate is used
+#define MAX_RETRACT_FEEDRATE 100   //45 !!mm/sec
 
 //-----------------------------------------------------------------------
 //// Not used at the Moment
 //-----------------------------------------------------------------------
 
-// Min step delay in microseconds. If you are experiencing missing steps, try to raise the delay microseconds, but be aware this
+// Extended step pulse in microseconds.
 // If you enable this, make sure STEP_DELAY_RATIO is disabled.
-//#define STEP_DELAY_MICROS 1
+// Minimum High Time for Stepperpulse at 16 Mhz (E-Axis) is 2,4 us
+// Minimum High Time for Stepperpulse on X = 6,7 us / Y = 5,6 us / Z = 3,6 us
+// if you want Stepperpulse like 8 us set the value to 6 
+#define EXTEND_STEP_PULSE_USEC 0
 
 // Step delay over interval ratio. If you are still experiencing missing steps, try to uncomment the following line, but be aware this
 // If you enable this, make sure STEP_DELAY_MICROS is disabled. (except for Gen6: both need to be enabled.)
@@ -289,7 +292,7 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 //Measure the MIN/MAX Value of the Hotend Temp and show it with
 //Command M601 / Command M602 Reset the MIN/MAX Value
-//#define DEBUG_HEATER_TEMP
+#define DEBUG_HEATER_TEMP
 
 // M303 - PID relay autotune S<temperature> sets the target temperature. 
 // (default target temperature = 150C)
@@ -297,9 +300,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 //PID Controler Settings
 #define PID_INTEGRAL_DRIVE_MAX 80 // too big, and heater will lag after changing temperature, too small and it might not compensate enough for long-term errors
-#define PID_PGAIN 2560 //256 is 1.0  // value of X means that error of 1 degree is changing PWM duty by X, probably no need to go over 25
-#define PID_IGAIN 64 //256 is 1.0  // value of X (e.g 0.25) means that each degree error over 1 sec (2 measurements) changes duty cycle by 2X (=0.5) units (verify?)
-#define PID_DGAIN 4096 //256 is 1.0  // value of X means that around reached setpoint, each degree change over one measurement (half second) adjusts PWM by X units to compensate
+#define PID_PGAIN 1459 //2048 //256 is 1.0  // value of X means that error of 1 degree is changing PWM duty by X, probably no need to go over 25
+#define PID_IGAIN 21   //32 // original = 64 - 256 is 1.0  // value of X (e.g 0.25) means that each degree error over 1 sec (2 measurements) changes duty cycle by 2X (=0.5) units (verify?)
+#define PID_DGAIN 6656 //2048 //256 is 1.0  // value of X means that around reached setpoint, each degree change over one measurement (half second) adjusts PWM by X units to compensate
 
 // magic formula 1, to get approximate "zero error" PWM duty. Take few measurements with low PWM duty and make linear fit to get the formula
 // for my makergear hot-end: linear fit {50,10},{60,20},{80,30},{105,50},{176,100},{128,64},{208,128}
@@ -308,7 +311,7 @@ const int dropsegments=5; //everything with less than this number of steps will 
 #define LED_PWM_FOR_BRIGHTNESS(brightness) ((64*brightness-1384)/(300-brightness))
 #endif
 
-// Change this value (range 1-255) to limit the current to the nozzle
+// Change this value (range 30 - 255) to limit the current to the nozzle
 #define HEATER_CURRENT 255
 
 // How often should the heater check for new temp readings, in milliseconds
@@ -369,6 +372,8 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //#define EXTRUDERFAN_PIN 66 //Pin used to control the fan, comment out to disable this function
 #define EXTRUDERFAN_DEC 50 //Hotend temperature from where the fan will be turned on
 
+//#define CHAIN_OF_COMMAND 1 //Finish buffered moves before executing M42, fan speed, heater target, and so...
+
 //-----------------------------------------------------------------------
 // DEBUGING
 //-----------------------------------------------------------------------
@@ -376,7 +381,7 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 //Uncomment this to see on the host if a wrong or unknown Command is recived
 //Only for Testing !!!
-//#define SEND_WRONG_CMD_INFO
+#define SEND_WRONG_CMD_INFO
 
 // Uncomment the following line to enable debugging. You can better control debugging below the following line
 //#define DEBUG
