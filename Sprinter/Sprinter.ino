@@ -155,6 +155,10 @@
  Version 1.3.25T / 12.01.2014
 - M105 use the worng convert function for Heatbed Target Temperatur
 - Correct bug in calculate_trapezoid_for_block(..)
+- smoother Steps for arc funtion G2/G3
+- example for HEATER_DUTY_FOR_SETPOINT for reprap-fab Extruder V4
+- more cycles for Autotune (M303) old 5 cycles, new 7 cycles
+- New Thermistortable for ATC Semitec 104GT-2 (Type 5) 
 
 . 
 
