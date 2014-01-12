@@ -239,9 +239,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 // Arc interpretation settings:
 //Step to split a cirrcle in small Lines 
-#define MM_PER_ARC_SEGMENT 1
+#define MM_PER_ARC_SEGMENT 0.5    //1
 //After this count of steps a new SIN / COS caluclation is startet to correct the circle interpolation
-#define N_ARC_CORRECTION 25
+#define N_ARC_CORRECTION 40      //25
 
 //-----------------------------------------------------------------------
 //// FANCONTROL WITH SOFT PWM
@@ -306,7 +306,11 @@ const int dropsegments=5; //everything with less than this number of steps will 
 
 // magic formula 1, to get approximate "zero error" PWM duty. Take few measurements with low PWM duty and make linear fit to get the formula
 // for my makergear hot-end: linear fit {50,10},{60,20},{80,30},{105,50},{176,100},{128,64},{208,128}
-#define HEATER_DUTY_FOR_SETPOINT(setpoint) ((int)((187L*(long)setpoint)>>8)-27)  
+//#define HEATER_DUTY_FOR_SETPOINT(setpoint) ((int)((187L*(long)setpoint)>>8)-27)  //Original
+
+//For reprap-feb Extruder V4 with heaterelement
+#define HEATER_DUTY_FOR_SETPOINT(setpoint) ((int)((72L*(long)setpoint)>>8)-14)  
+
 // magic formula 2, to make led brightness approximately linear
 #define LED_PWM_FOR_BRIGHTNESS(brightness) ((64*brightness-1384)/(300-brightness))
 #endif
@@ -331,9 +335,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 #define DISABLE_CHECK_DURING_TRAVEL 1000
 
 //// Temperature smoothing - only uncomment this if your temp readings are noisy (Gen6 without EvdZ's 5V hack)
-//#define SMOOTHING
+#define SMOOTHING
 //#define SMOOTHFACTOR 16 //best to use a power of two here - determines how many values are averaged together by the smoothing algorithm
-
+#define SMOOTHFACTOR 2 //best to use a power of two here - determines how many values are averaged together by the smoothing algorithm
 
 //// Experimental watchdog and minimal temp
 // The watchdog waits for the watchperiod in milliseconds whenever an M104 or M109 increases the target temperature
@@ -341,8 +345,9 @@ const int dropsegments=5; //everything with less than this number of steps will 
 //#define WATCHPERIOD 5000 //5 seconds
 
 // Actual temperature must be close to target for this long before M109 returns success
-//#define TEMP_RESIDENCY_TIME 20  // (seconds)
-//#define TEMP_HYSTERESIS 5       // (C°) range of +/- temperatures considered "close" to the target one
+#define TEMP_RESIDENCY_TIME 10  // (seconds)
+#define TEMP_HYSTERESIS 3       // (C°) range of +/- temperatures considered "close" to the target one
+#define TEMP_WINDOW     1       // (degC) Window around target to start the recidency timer x degC early.
 
 //// The minimal temperature defines the temperature below which the heater will not be enabled
 #define MINTEMP 5
@@ -351,7 +356,8 @@ const int dropsegments=5; //everything with less than this number of steps will 
 // When temperature exceeds max temp, your heater will be switched off.
 // This feature exists to protect your hotend from overheating accidentally, but *NOT* from thermistor short/failure!
 // You should use MINTEMP for thermistor short/failure protection.
-#define MAXTEMP 275
+#define MAXTEMP 260
+#define MAXTEMP_BED 140
 
 // Select one of these only to define how the nozzle temp is read.
 #define HEATER_USES_THERMISTOR

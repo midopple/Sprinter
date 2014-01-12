@@ -151,6 +151,11 @@
 
  Version 1.3.24T / 21.09.2013
 - M105 show same format as Marlin / send targettemp 
+
+ Version 1.3.25T / 12.01.2014
+- M105 use the worng convert function for Heatbed Target Temperatur
+- Correct bug in calculate_trapezoid_for_block(..)
+
 . 
 
 */
@@ -264,7 +269,7 @@ void __cxa_pure_virtual(){};
 // M603 - Show Free Ram
 
 
-#define _VERSION_TEXT "1.3.24T / 21.09.2013"
+#define _VERSION_TEXT "1.3.25T / 12.01.2014"
 
 //Stepper Movement Variables
 char axis_codes[NUM_AXIS] = {'X', 'Y', 'Z', 'E'};
@@ -1528,7 +1533,7 @@ FORCE_INLINE void process_commands()
             showString(PSTR(" B:"));
             Serial.print(bedtempC); 
             showString(PSTR(" /"));
-            Serial.print(analog2temp(target_bed_raw)); 
+            Serial.print(analog2tempBed(target_bed_raw)); 
           #else
             Serial.print(PSTR(" B:0 /0"));
           #endif  
@@ -1574,11 +1579,14 @@ FORCE_INLINE void process_commands()
         #endif
         return;
         //break;
-      case 109: { // M109 - Wait for extruder heater to reach target.
-#ifdef CHAIN_OF_COMMAND
+      case 109: // M109 - Wait for extruder heater to reach target.
+      {
+        #ifdef CHAIN_OF_COMMAND
           st_synchronize(); // wait for all movements to finish
-#endif
+        #endif
+        
         if (code_seen('S')) target_raw = temp2analogh(target_temp = code_value());
+        
         #ifdef WATCHPERIOD
             if(target_raw>current_raw)
             {
@@ -1590,6 +1598,7 @@ FORCE_INLINE void process_commands()
                 watchmillis = 0;
             }
         #endif
+        
         codenum = millis(); 
         
         /* See if we are heating up or cooling down */
@@ -1600,51 +1609,66 @@ FORCE_INLINE void process_commands()
         residencyStart = -1;
         /* continue to loop until we have reached the target temp   
            _and_ until TEMP_RESIDENCY_TIME hasn't passed since we reached it */
-        while( (target_direction ? (current_raw < target_raw) : (current_raw > target_raw))
-            || (residencyStart > -1 && (millis() - residencyStart) < TEMP_RESIDENCY_TIME*1000) ) {
+        while((residencyStart == -1) ||
+              (residencyStart >= 0 && (((unsigned int) (millis() - residencyStart)) < (TEMP_RESIDENCY_TIME * 1000UL))) ) {
       #else
         while ( target_direction ? (current_raw < target_raw) : (current_raw > target_raw) ) {
-      #endif
-          if( (millis() - codenum) > 1000 ) //Print Temp Reading every 1 second while heating up/cooling down
+      #endif //TEMP_RESIDENCY_TIME
+          //Print Temp Reading every 1 second while heating up/cooling down      
+          if( (millis() - codenum) > 1000UL ) 
           {
             showString(PSTR("T:"));
           #ifndef TEMP_RESIDENCY_TIME
             Serial.println( analog2temp(current_raw) );
           #else
             Serial.print( analog2temp(current_raw) );
-            
-            showString(PSTR(" / W:"));
+            showString(PSTR(" E:0"));
+            showString(PSTR(" W:"));
             if(residencyStart > -1)
-              Serial.print( (millis() - residencyStart)/1000 );
+            {
+              codenum = ((TEMP_RESIDENCY_TIME * 1000UL) - (millis() - residencyStart)) / 1000UL;
+              Serial.print( codenum );
+            }
             else
-              Serial.print( PSTR("0") );
+            {
+              Serial.print("?");
+            }
               
-            showString(PSTR(" / D:"));
-            Serial.println( labs(analog2temp(current_raw) - analog2temp(target_raw)) );
+            showString(PSTR(" D:"));
+            Serial.println( analog2temp(current_raw) - analog2temp(target_raw) );
           #endif
             codenum = millis();
           }
+
+          //Call Heatercontrol
           manage_heater();
+
           #if (MINIMUM_FAN_START_SPEED > 0)
             manage_fan_start_speed();
           #endif
+
+          //Update Values on Display
           manage_display();
+
           #ifdef TEMP_RESIDENCY_TIME
             /* start/restart the TEMP_RESIDENCY_TIME timer whenever we reach target temp for the first time
                or when current temp falls outside the hysteresis after target temp was reached */
-            if (   (residencyStart == -1 &&  target_direction && current_raw >= target_raw)
-                || (residencyStart == -1 && !target_direction && current_raw <= target_raw)
-                || (residencyStart > -1 && labs(analog2temp(current_raw) - analog2temp(target_raw)) > TEMP_HYSTERESIS) ) {
+
+            if ((residencyStart == -1 &&  target_direction && (analog2temp(current_raw) >= (analog2temp(target_raw)-TEMP_WINDOW))) ||
+                (residencyStart == -1 && !target_direction && (analog2temp(current_raw) <= (analog2temp(target_raw)+TEMP_WINDOW))) ||
+                (residencyStart > -1 && labs(analog2temp(current_raw) - analog2temp(target_raw)) > TEMP_HYSTERESIS) ) 
+            {
               residencyStart = millis();
             }
           #endif
-	    }
+	  }
       }
       break;
       case 190: // M190 - Wait for bed heater to reach target temperature.
-#ifdef CHAIN_OF_COMMAND
+      #ifdef CHAIN_OF_COMMAND
           st_synchronize(); // wait for all movements to finish
-#endif
+      #endif
+      
       #if TEMP_1_PIN > -1
         if (code_seen('S')) target_bed_raw = temp2analogBed(code_value());
         codenum = millis(); 
@@ -1659,19 +1683,22 @@ FORCE_INLINE void process_commands()
             Serial.println( analog2tempBed(current_bed_raw) ); 
             codenum = millis(); 
           }
+          
           manage_heater();
+          
           #if (MINIMUM_FAN_START_SPEED > 0)
             manage_fan_start_speed();
           #endif
+          
           manage_display();
         }
       #endif
       break;
       #if FAN_PIN > -1
       case 106: //M106 Fan On
-#ifdef CHAIN_OF_COMMAND
+        #ifdef CHAIN_OF_COMMAND
           st_synchronize(); // wait for all movements to finish
-#endif
+        #endif
         if (code_seen('S'))
         {
             unsigned char l_fan_code_val = constrain(code_value(),0,255);
@@ -2299,9 +2326,9 @@ void calculate_trapezoid_for_block(block_t *block, float entry_factor, float exi
   
   long acceleration = block->acceleration_st;
   int32_t accelerate_steps =
-    ceil(estimate_acceleration_distance(block->initial_rate, block->nominal_rate, acceleration));
+    ceil(estimate_acceleration_distance(initial_rate, block->nominal_rate, acceleration));
   int32_t decelerate_steps =
-    floor(estimate_acceleration_distance(block->nominal_rate, block->final_rate, -acceleration));
+    floor(estimate_acceleration_distance(block->nominal_rate, final_rate, -acceleration));
     
   // Calculate the size of Plateau of Nominal Rate.
   int32_t plateau_steps = block->step_event_count-accelerate_steps-decelerate_steps;
@@ -2309,9 +2336,10 @@ void calculate_trapezoid_for_block(block_t *block, float entry_factor, float exi
   // Is the Plateau of Nominal Rate smaller than nothing? That means no cruising, and we will
   // have to use intersection_distance() to calculate when to abort acceleration and start breaking
   // in order to reach the final_rate exactly at the end of this block.
-  if (plateau_steps < 0) {
+  if (plateau_steps < 0) 
+  {
     accelerate_steps = ceil(
-      intersection_distance(block->initial_rate, block->final_rate, acceleration, block->step_event_count));
+      intersection_distance(initial_rate, final_rate, acceleration, block->step_event_count));
     accelerate_steps = max(accelerate_steps,0); // Check limits due to numerical round-off
     accelerate_steps = min(accelerate_steps,block->step_event_count);
     plateau_steps = 0;
